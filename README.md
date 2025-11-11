@@ -1,0 +1,354 @@
+# Loudspeaker Py - CFES Testing Framework
+
+A comprehensive Python framework for testing Controlled Functional Expansion Systems (CFES) in Python, featuring both JAX/diffrax and PyTorch implementations. This framework is designed for loudspeaker modeling and general dynamical system identification using modern machine learning techniques.
+
+## 🚀 Features
+
+- **Dual Framework Support**: Implementations in both JAX/diffrax and PyTorch
+- **Neural Controlled Differential Equations (Neural CDEs)**: State-of-the-art time series modeling
+- **Modular Design**: Clean, well-structured code with separate modules for models, solvers, and utilities
+- **Jupyter Integration**: Full Jupyter notebook support with custom kernel
+- **TensorBoard Logging**: Comprehensive experiment tracking and visualization
+- **Comprehensive Testing**: Extensive test suite for all components
+- **CLI Interface**: Command-line tools for training, evaluation, and data generation
+
+## 📋 Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Examples](#examples)
+- [Project Structure](#project-structure)
+- [Usage](#usage)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
+## 🛠️ Installation
+
+This project uses [Pixi](https://pixi.rs/) as the package manager. Pixi provides fast, reliable package management and environment management.
+
+### Prerequisites
+
+- Python 3.10 or higher
+- Pixi (install from [pixi.rs](https://pixi.rs/))
+
+### Quick Setup
+
+1. **Clone and setup the environment:**
+   ```bash
+   git clone <repository-url>
+   cd loudspeaker.py
+   pixi install
+   ```
+
+2. **Setup Jupyter kernel:**
+   ```bash
+   python scripts/setup_jupyter_kernel.py
+   ```
+
+3. **Verify installation:**
+   ```bash
+   pixi run jupyter-lab
+   # Select "Loudspeaker Python (CFES)" kernel
+   # Run the example_usage.ipynb notebook
+   ```
+
+### Manual Installation
+
+If you prefer to use pip directly:
+
+```bash
+# Install core dependencies
+pip install torch torchvision torchaudio
+pip install jax jaxlib  # Follow JAX installation guide for GPU support
+pip install diffrax equinox optax
+pip install matplotlib seaborn plotly
+pip install tensorboard
+pip install jupyter jupyterlab ipykernel
+pip install black isort flake8 mypy pytest
+```
+
+## 🚀 Quick Start
+
+### 1. JAX/Diffrax Neural CDE Example
+
+```python
+import jax
+import jax.numpy as jnp
+import diffrax
+import equinox as eqx
+
+# Run the complete example
+python scripts/neural_cde_example.py
+```
+
+This example demonstrates:
+- Spiral time series generation
+- Neural CDE model definition
+- Training with optax
+- Visualization of results
+
+### 2. PyTorch CFES Example
+
+```python
+import torch
+import torch.nn as nn
+
+# Run the PyTorch example
+python scripts/pytorch_cfe_example.py
+```
+
+This example shows:
+- PyTorch Neural CDE implementation
+- TensorBoard logging
+- Training and validation loops
+- Comprehensive visualization
+
+### 3. Using the CLI
+
+```bash
+# Train models
+loudspeaker-cli train --config configs/example.yaml
+
+# Evaluate models
+loudspeaker-cli evaluate --model-path models/best_model.pth --data-path data/test.csv
+
+# Generate data
+loudspeaker-cli generate-data --dataset spirals --size 1000 --output data/spirals.csv
+
+# Create visualizations
+loudspeaker-cli visualize --input models/best_model.pth --output plots/results.png
+```
+
+## 📚 Examples
+
+### Neural CDE with Diffrax
+
+**File**: `scripts/neural_cde_example.py`
+
+A comprehensive example showing how to implement Neural CDEs using JAX and diffrax:
+
+```python
+#%%
+# Import libraries and setup
+import diffrax
+import equinox as eqx
+import jax.numpy as jnp
+
+#%%
+# Define Neural CDE model
+class NeuralCDE(eqx.Module):
+    # Model implementation...
+
+#%%
+# Generate spiral data
+ts, coeffs, labels, data_size = get_spiral_data(dataset_size=256)
+
+#%%
+# Train model
+model, results = train_neural_cde(config)
+
+#%%
+# Visualize results
+plot_training_history(results)
+plot_spiral_predictions(model, config)
+```
+
+### PyTorch CFES Implementation
+
+**File**: `scripts/pytorch_cfe_example.py`
+
+PyTorch implementation with TensorBoard logging:
+
+```python
+#%%
+# Setup PyTorch model
+class PyTorchNeuralCDE(nn.Module):
+    # Model implementation...
+
+#%%
+# Training with TensorBoard
+writer = SummaryWriter(log_dir="logs/pytorch_cfe")
+# Training loop with logging...
+
+#%%
+# Visualization
+plot_pytorch_training_history(results)
+visualize_spiral_predictions_pytorch(model, config)
+```
+
+### Jupyter Notebooks
+
+After running `setup_jupyter_kernel.py`, you can use:
+
+- `example_usage.ipynb` - Basic environment verification
+- Open any `.py` script in Jupyter Lab and run sections individually using `#%%` delimiters
+
+## 📁 Project Structure
+
+```
+loudspeaker.py/
+├── src/loudspeaker_py/           # Main package
+│   ├── models/                   # Neural and dynamical models
+│   │   ├── neural_cdes/          # Neural CDE implementations
+│   │   ├── dynamical_systems/    # Classical dynamical systems
+│   │   └── blackbox_models/      # Black-box model implementations
+│   ├── solvers/                  # Differential equation solvers
+│   │   ├── ode_solvers/          # ODE solvers
+│   │   ├── sde_solvers/          # SDE solvers
+│   │   └── cde_solvers/          # CDE solvers
+│   ├── data/                     # Data handling utilities
+│   ├── utils/                    # General utilities
+│   ├── visualization/            # Plotting and visualization
+│   └── cli.py                    # Command-line interface
+├── scripts/                      # Standalone scripts
+│   ├── neural_cde_example.py     # JAX/diffrax example
+│   ├── pytorch_cfe_example.py    # PyTorch example
+│   ├── setup_jupyter_kernel.py   # Jupyter setup
+│   └── ...                       # Other utility scripts
+├── tests/                        # Test suite
+│   ├── test_models/              # Model tests
+│   ├── test_solvers/             # Solver tests
+│   └── test_utils/               # Utility tests
+├── examples/                     # Example notebooks
+├── docs/                         # Documentation
+├── pixi.toml                     # Package configuration
+└── README.md                     # This file
+```
+
+## 🔧 Usage
+
+### Configuration
+
+Configuration is managed through the `Config` classes in each script or via YAML files:
+
+```python
+class Config:
+    dataset_size = 256
+    batch_size = 32
+    learning_rate = 1e-2
+    num_steps = 20
+    hidden_size = 8
+    # ... other parameters
+```
+
+### Data Format
+
+Time series data should be formatted as:
+- `ts`: Time points (batch_size, seq_len)
+- `data`: Input paths (batch_size, seq_len, input_dim)
+- `labels`: Target labels (batch_size,)
+
+### Model Training
+
+```python
+# JAX/Diffrax
+model = NeuralCDE(data_size, hidden_size, width_size, depth, key=key)
+model, results = train_neural_cde(config)
+
+# PyTorch
+model = PyTorchNeuralCDE(input_dim, hidden_dim, output_dim)
+model, results = train_pytorch_cfe(config)
+```
+
+### Visualization
+
+Both frameworks include comprehensive visualization:
+
+```python
+# Training history
+plot_training_history(results)
+
+# Spiral predictions
+plot_spiral_predictions(model, config)
+
+# PyTorch specific
+plot_pytorch_training_history(results)
+visualize_spiral_predictions_pytorch(model, config)
+```
+
+## 🧪 Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pixi run test
+
+# Run tests with coverage
+pixi run test-cov
+
+# Run specific test
+pytest tests/test_models/
+```
+
+### Code Quality
+
+```bash
+# Format code
+pixi run format
+
+# Type checking
+pixi run type-check
+
+# Linting
+pixi run lint
+```
+
+### Adding New Features
+
+1. Create new modules in appropriate directories under `src/loudspeaker_py/`
+2. Add tests in `tests/`
+3. Update documentation
+4. Run the full test suite
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📊 Performance Comparison
+
+The framework supports comparing JAX/diffrax and PyTorch implementations:
+
+| Aspect | JAX/Diffrax | PyTorch |
+|--------|-------------|---------|
+| **Speed** | ⭐⭐⭐⭐⭐ Very fast | ⭐⭐⭐⭐ Fast |
+| **Memory** | ⭐⭐⭐⭐ Efficient | ⭐⭐⭐ Good |
+| **Ease of use** | ⭐⭐⭐ Moderate | ⭐⭐⭐⭐ Easy |
+| **Ecosystem** | ⭐⭐⭐ Growing | ⭐⭐⭐⭐⭐ Mature |
+| **Auto-diff** | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐ Very good |
+
+## 🎯 Applications
+
+This framework is particularly well-suited for:
+
+- **Loudspeaker modeling** and system identification
+- **Time series classification** and regression
+- **Dynamical system identification**
+- **Control system design**
+- **Signal processing applications**
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Diffrax](https://github.com/patrick-kidger/diffrax) - Numerical differential equation solvers in JAX
+- [Equinox](https://github.com/patrick-kidger/equinox) - Neural networks in JAX
+- [PyTorch](https://pytorch.org/) - Deep learning framework
+- [JAX](https://jax.readthedocs.io/) - NumPy on accelerators
+
+## 🔗 Related Projects
+
+- [Neural CDE Paper](https://arxiv.org/abs/1810.01367) - Original Neural CDE paper
+- [Diffrax Examples](https://docs.kidger.site/diffrax/) - Diffrax documentation and examples
+- [PyTorch Examples](https://github.com/pytorch/examples) - PyTorch example implementations
+
+---
+
+**Note**: This is a research framework under active development. APIs may change as the project evolves.
