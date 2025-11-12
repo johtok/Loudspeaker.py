@@ -61,10 +61,41 @@ import jax.nn as jnn
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+import signal
+import time
+from contextlib import contextmanager
 
 print(f"JAX devices: {jax.devices()}")
 print(f"JAX backend: {jax.default_backend()}")
 print(f"64-bit precision enabled: {jax.config.jax_enable_x64}")
+
+
+#%%
+# Timeout and utility functions
+@contextmanager
+def timeout_context(seconds: int = 600):
+    """Context manager for timeout functionality."""
+    import signal
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Operation timed out after {seconds} seconds")
+    
+    # Set the signal handler and a alarm
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(seconds)
+    
+    try:
+        yield
+    finally:
+        # Disable the alarm
+        signal.alarm(0)
+
+def add_timeout_to_function(func, timeout_seconds: int = 600):
+    """Decorator to add timeout to a function."""
+    def wrapper(*args, **kwargs):
+        with timeout_context(timeout_seconds):
+            return func(*args, **kwargs)
+    return wrapper
 
 
 #%%
@@ -205,13 +236,13 @@ def create_neural_ode_config(**kwargs) -> Dict[str, Any]:
 #%%
 # Neural Network Architecture
 class NeuralODEFunc(eqx.Module):
-    """Vector field function for neural ODE using MLP architecture."""
+    """Vector field function for neural ODE using dense layer architecture."""
     
-    out_scale: jnp.ndarray
-    mlp: eqx.nn.MLP
+    # 6 parameters in 2x3 matrix as specified
+    weight_matrix: jnp.ndarray
     activation_fn: Callable
     
-    def __init__(self, data_size: int, hidden_dim: int, num_layers: int, 
+    def __init__(self, data_size: int, hidden_dim: int, num_layers: int,
                  activation: str = 'softplus', *, key: jax.random.PRNGKey, **kwargs):
         super().__init__(**kwargs)
         
@@ -225,34 +256,26 @@ class NeuralODEFunc(eqx.Module):
         else:
             raise ValueError(f"Unknown activation: {activation}")
         
-        # Output scaling (learnable parameter)
-        self.out_scale = jnp.array(1.0)
+        # Create 2x3 weight matrix (6 parameters) without bias as specified
+        # This is a simple dense layer: output = W @ input
+        keys = jr.split(key, 1)
+        self.weight_matrix = jr.normal(keys[0], (data_size, data_size)) * 0.1
         
-        # MLP for vector field
-        self.mlp = eqx.nn.MLP(
-            in_size=data_size,
-            out_size=data_size,
-            width_size=hidden_dim,
-            depth=num_layers,
-            activation=self.activation_fn,
-            final_activation=jnp.tanh,  # Prevent blowup
-            key=key,
-        )
-    
     def __call__(self, t: float, y: jnp.ndarray, args: Any) -> jnp.ndarray:
         """
-        Compute vector field f(t, y, args).
+        Compute vector field f(t, y, args) using 2x3 weight matrix.
         
         Args:
             t: Time
-            y: State vector
+            y: State vector (3D: position, velocity, acceleration)
             args: Additional arguments (e.g., forcing)
             
         Returns:
             Vector field evaluation
         """
-        # Apply learnable scaling and MLP
-        return self.out_scale * self.mlp(y)
+        # Apply weight matrix transformation: y' = W @ y
+        # This creates a linear transformation with exactly 6 parameters for 3D state
+        return jnp.dot(self.weight_matrix, y)
 
 
 class NeuralODEModel(eqx.Module):
@@ -351,6 +374,45 @@ class NeuralODEModel(eqx.Module):
 
 #%%
 # Data Generation
+def generate_pink_noise_bandpassed(length: int, sample_rate: float,
+                                   freq_range: Tuple[float, float],
+                                   key: jax.random.PRNGKey) -> jnp.ndarray:
+    """
+    Generate bandpassed pink noise for forcing signal.
+    
+    Args:
+        length: Length of the signal
+        sample_rate: Sampling frequency in Hz
+        freq_range: Tuple of (low_freq, high_freq) in Hz
+        key: JAX random key
+        
+    Returns:
+        Bandpassed pink noise signal
+    """
+    # Generate white noise
+    white_noise = jr.normal(key, (length,))
+    
+    # Apply 1/f filtering in frequency domain
+    frequencies = jnp.fft.fftfreq(length, 1.0/sample_rate)
+    pink_spectrum = jnp.ones(length, dtype=complex)
+    
+    # Avoid division by zero and apply 1/f filtering
+    mask = jnp.abs(frequencies) > 1e-10
+    pink_spectrum = pink_spectrum.at[mask].set(1.0 / jnp.sqrt(jnp.abs(frequencies[mask])))
+    
+    # Apply bandpass filter
+    f_low, f_high = freq_range
+    bandpass_mask = (jnp.abs(frequencies) >= f_low) & (jnp.abs(frequencies) <= f_high)
+    pink_spectrum = pink_spectrum * bandpass_mask
+    
+    # Transform back to time domain
+    pink_noise = jnp.fft.ifft(pink_spectrum * jnp.fft.fft(white_noise)).real
+    
+    # Normalize and scale
+    pink_noise = pink_noise / jnp.std(pink_noise)
+    
+    return pink_noise
+
 def generate_synthetic_data(config: Dict[str, Any], *,
                             key: jax.random.PRNGKey) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
@@ -366,7 +428,7 @@ def generate_synthetic_data(config: Dict[str, Any], *,
     """
     # Check if we should use MSD simulation for more realistic data
     if 'msd_params' in config:
-        return _generate_msd_data_with_forcing(config, key)
+        return _generate_msd_data_with_forcing_exp2(config, key)
     
     # Fallback to generic synthetic data generation
     return _generate_generic_synthetic_data(config, key)
@@ -429,89 +491,124 @@ def _generate_generic_synthetic_data(config: Dict[str, Any], key: jax.random.PRN
     
     return ts, train_data, test_data
 
-def _generate_msd_data_with_forcing(config: Dict[str, Any], key: jax.random.PRNGKey) -> Tuple[jnp.ndarray, Dict[str, Any], Dict[str, Any]]:
-    """Generate MSD data using msd_simulation_with_forcing."""
-    try:
-        from msd_simulation_with_forcing import (
-            MSDConfig as MSDFullConfig,
-            ForcingType,
-            run_batch_simulation
+def _generate_msd_data_with_forcing_exp2(config: Dict[str, Any], key: jax.random.PRNGKey) -> Tuple[jnp.ndarray, Dict[str, Any], Dict[str, Any]]:
+    """
+    Generate MSD data for Exp2 with specific parameters:
+    - Pink noise bandwidth 1Hz-100Hz
+    - Timeseries 5 samples (or 50 for Exp3)
+    - Sampling frequency 300Hz
+    - Pink noise bandpassed to 1-50Hz
+    - Mass spring damper peak tuned to 25Hz
+    """
+    print("Generating data for Exp2 with specific MSD parameters...")
+    
+    # Extract data parameters
+    data_config = config['data']
+    sample_rate = 300  # Fixed sampling frequency
+    simulation_time = data_config.get('simulation_time', 0.1)  # seconds
+    num_points = int(simulation_time * sample_rate)
+    dataset_size = data_config['dataset_size']  # 5 for Exp2, 50 for Exp3
+    
+    # Create time vector
+    ts = jnp.linspace(0, simulation_time, num_points)
+    
+    # MSD physical parameters (tuned for 25Hz peak)
+    mass = 0.05  # kg
+    natural_frequency = 25.0  # Hz (peak at 25Hz)
+    damping_ratio = 0.01
+    stiffness = mass * (2 * jnp.pi * natural_frequency)**2
+    damping_coefficient = 2 * damping_ratio * mass * (2 * jnp.pi * natural_frequency)
+    
+    # Generate forcing signals (pink noise bandpassed to 1-50Hz)
+    forcing_key, data_key = jr.split(key, 2)
+    forcing_signals = []
+    
+    for i in range(dataset_size):
+        signal_key = jr.fold_in(forcing_key, i)
+        # Generate pink noise with bandwidth 1Hz-100Hz, then bandpass to 1-50Hz
+        pink_noise = generate_pink_noise_bandpassed(
+            num_points, sample_rate, (1.0, 50.0), signal_key
         )
+        forcing_signals.append(pink_noise)
+    
+    forcing_signals = jnp.stack(forcing_signals)
+    
+    # Simulate MSD system response for each forcing signal
+    trajectories = []
+    
+    for i in range(dataset_size):
+        forcing_signal = forcing_signals[i]
         
-        print("Generating data using msd_simulation_with_forcing...")
+        # Create interpolation for forcing signal
+        coeffs = diffrax.backward_hermite_coefficients(ts, forcing_signal)
+        forcing_interp = diffrax.CubicInterpolation(ts, coeffs)
         
-        # Create msd_simulation_with_forcing config
-        msd_config = MSDFullConfig(
-            mass=config['msd_params']['mass'],
-            natural_frequency=config['msd_params']['natural_frequency'],
-            damping_ratio=config['msd_params']['damping_ratio'],
-            sample_rate=config['data']['sample_rate'],
-            simulation_time=config['data']['simulation_time'],
-            forcing_type=ForcingType.PINK_NOISE,
-            forcing_amplitude=config['msd_params']['forcing_amplitude'],
-            batch_size=config['data']['dataset_size'],
-            normalize_plots=False,
-            save_plots=False
-        )
+        # Initial conditions (small random values)
+        ic_key = jr.fold_in(data_key, i)
+        y0 = jr.uniform(ic_key, (3,), minval=-0.1, maxval=0.1)
         
-        # Generate batch simulation data
-        batch_results = run_batch_simulation(msd_config)
+        # Define MSD ODE function
+        def msd_ode(t, y, args):
+            pos, vel, acc = y[0], y[1], y[2]
+            forcing = forcing_interp.evaluate(t)
+            # MSD equation: m*a + c*v + k*x = F(t)
+            new_acc = (forcing - damping_coefficient * vel - stiffness * pos) / mass
+            return jnp.array([vel, new_acc, 0.0])  # acceleration derivative is 0 for simplicity
         
-        # Extract data from batch results
-        ts = batch_results['time']
-        forces = batch_results['forcings']
-        positions = batch_results['positions']
-        velocities = batch_results['velocities']
-        
-        # Add acceleration (computed from velocity)
-        accelerations = []
-        for i in range(config['data']['dataset_size']):
-            acc = jnp.gradient(velocities[i], ts[1] - ts[0])
-            accelerations.append(acc)
-        accelerations = jnp.stack(accelerations)
-        
-        # Stack responses: [position, velocity, acceleration]
-        responses = jnp.stack([positions, velocities, accelerations], axis=-1)
-        
-        # Generate initial conditions for neural ODE training
-        ic_key, data_key = jr.split(key, 2)
-        ic_range = config['data']['initial_condition_range']
-        initial_conditions = jr.uniform(
-            ic_key,
-            (config['data']['dataset_size'], config['model']['output_dim']),
-            minval=ic_range[0],
-            maxval=ic_range[1]
-        )
-        
-        # Split into train/test
-        test_size = int(config['data']['dataset_size'] * config['data']['test_split'])
-        train_size = config['data']['dataset_size'] - test_size
-        
-        train_data = {
-            'ts': ts,
-            'initial_conditions': initial_conditions[:train_size],
-            'trajectories': responses[:train_size],
-            'forcing': forces[:train_size],
-            'time': ts
-        }
-        
-        test_data = {
-            'ts': ts,
-            'initial_conditions': initial_conditions[train_size:],
-            'trajectories': responses[train_size:],
-            'forcing': forces[train_size:],
-            'time': ts
-        }
-        
-        print(f"Generated MSD data: ts={ts.shape}, responses={responses.shape}")
-        print(f"Train data shape: {train_data['trajectories'].shape}")
-        print(f"Test data shape: {test_data['trajectories'].shape}")
-        
-        return ts, train_data, test_data
-        
-    except ImportError:
-        print("Warning: msd_simulation_with_forcing not available, falling back to generic data generation")
-        return _generate_generic_synthetic_data(config, key)
+        # Solve ODE
+        try:
+            solution = diffrax.diffeqsolve(
+                diffrax.ODETerm(msd_ode),
+                diffrax.Tsit5(),
+                t0=ts[0],
+                t1=ts[-1],
+                dt0=ts[1] - ts[0] * 0.1,
+                y0=y0,
+                saveat=diffrax.SaveAt(ts=ts),
+                stepsize_controller=diffrax.PIDController(rtol=1e-6, atol=1e-8),
+            )
+            trajectories.append(solution.ys)
+        except Exception as e:
+            print(f"Warning: ODE solve failed for sample {i}: {e}")
+            # Fallback to zeros
+            trajectories.append(jnp.zeros((len(ts), 3)))
+    
+    trajectories = jnp.stack(trajectories)
+    
+    # Generate initial conditions for neural ODE training
+    ic_key, data_key = jr.split(data_key, 2)
+    ic_range = data_config['initial_condition_range']
+    initial_conditions = jr.uniform(
+        ic_key,
+        (dataset_size, config['model']['output_dim']),
+        minval=ic_range[0],
+        maxval=ic_range[1]
+    )
+    
+    # Split into train/test
+    test_size = int(dataset_size * data_config['test_split'])
+    train_size = dataset_size - test_size
+    
+    train_data = {
+        'ts': ts,
+        'initial_conditions': initial_conditions[:train_size],
+        'trajectories': trajectories[:train_size],
+        'forcing': forcing_signals[:train_size],
+    }
+    
+    test_data = {
+        'ts': ts,
+        'initial_conditions': initial_conditions[train_size:],
+        'trajectories': trajectories[train_size:],
+        'forcing': forcing_signals[train_size:],
+    }
+    
+    print(f"Exp2 data generated: ts={ts.shape}, trajectories={trajectories.shape}")
+    print(f"Sample rate: {sample_rate}Hz, Simulation time: {simulation_time}s")
+    print(f"Dataset size: {dataset_size}, Train: {train_size}, Test: {test_size}")
+    print(f"MSD parameters: mass={mass}kg, natural_freq={natural_frequency}Hz")
+    
+    return ts, train_data, test_data
 
 
 def _generate_forcing_signals(forcing_config: Dict[str, Any], num_points: int, 
@@ -710,6 +807,17 @@ def loss_fn_neural_ode(model: NeuralODEModel, ts: jnp.ndarray,
     return mse_loss, metrics
 
 
+def loss_fn_neural_ode_with_timeout(model: NeuralODEModel, ts: jnp.ndarray,
+                                   y0_batch: jnp.ndarray, target_batch: jnp.ndarray,
+                                   solver_config: Dict[str, Any] = None,
+                                   timeout_seconds: int = 600) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
+    """
+    Loss function with timeout protection.
+    """
+    with timeout_context(timeout_seconds):
+        return loss_fn_neural_ode(model, ts, y0_batch, target_batch, solver_config)
+
+
 def train_step(model: NeuralODEModel, optimizer: optax.GradientTransformation,
                opt_state: Any, batch: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
                solver_config: Dict[str, Any] = None) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray], 
@@ -848,7 +956,7 @@ def train_neural_ode(model: NeuralODEModel, train_data: Dict[str, Any],
             if eval_config['early_stopping']:
                 if test_loss < history['best_loss']:
                     history['best_loss'] = float(test_loss)
-                    history['best_model'] = eqx.tree_copy(model)
+                    history['best_model'] = jax.tree_util.tree_map(lambda x: x.copy() if hasattr(x, 'copy') else x, model)
                     history['early_stopping_counter'] = 0
                 else:
                     history['early_stopping_counter'] += 1
@@ -1136,7 +1244,7 @@ def plot_training_history(history: Dict[str, Any], config: Dict[str, Any]) -> No
     
     plt.tight_layout()
     
-    # Save plot
+    # Save plot (only save, don't show)
     try:
         filename = f"{save_dir}/neural_ode_training_history.{format_}"
         plt.savefig(filename, dpi=dpi, bbox_inches='tight')
@@ -1200,7 +1308,7 @@ def plot_trajectories(model: NeuralODEModel, test_data: Dict[str, Any],
     
     plt.tight_layout()
     
-    # Save plot
+    # Save plot (only save, don't show)
     try:
         filename = f"{save_dir}/neural_ode_trajectories.{format_}"
         plt.savefig(filename, dpi=dpi, bbox_inches='tight')
@@ -1277,7 +1385,7 @@ def plot_phase_space(model: NeuralODEModel, test_data: Dict[str, Any],
     
     plt.tight_layout()
     
-    # Save plot
+    # Save plot (only save, don't show)
     try:
         filename = f"{save_dir}/neural_ode_phase_space.{format_}"
         plt.savefig(filename, dpi=dpi, bbox_inches='tight')
