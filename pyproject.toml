@@ -1,0 +1,103 @@
+[project]
+authors = [{name = "Johannes Nørskov Toke", email = "johannestoke@gmail.com"}]
+dependencies = []
+name = "loudspeaker.py"
+requires-python = ">= 3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.dependencies]
+# Scientific computing and ML
+numpy = "*"
+scipy = "*"
+pandas = "*"
+
+# JAX ecosystem for diffrax
+jax = ">=0.4.0"
+jaxlib = "*"
+# Note: jaxlib might need to be installed via pip separately for GPU support
+
+# Differential equation solvers
+diffrax = "*"
+equinox = ">=0.10.0"
+
+# Optimization
+optax = ">=0.1.0"
+
+# Visualization and plotting
+matplotlib = "*"
+seaborn = "*"
+plotly = "*"
+
+# Experiment tracking
+tensorboard = "*"
+
+# Jupyter ecosystem
+jupyter = "*"
+ipykernel = "*"
+
+
+# Development tools
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
+pytest = "*"
+pytest-cov = "*"
+pre-commit = "*"
+
+# Additional utilities
+tqdm = "*"
+rich = "*"
+click = "*"
+hydra-core = "*"
+omegaconf = "*"
+
+# Data handling
+h5py = "*"
+pytorch = "*"
+
+[tool.pixi.pypi-dependencies]
+loudspeaker_py = { path = ".", editable = true }
+
+
+[tool.pixi.tasks]
+# Install Jupyter kernel for this environment
+init-kernel = "python -m ipykernel install --user --name=loudspeaker-py --display-name='Loudspeaker Python (CFES)'"
+
+# Development setup
+dev-setup = "pre-commit install && python -m pip install -e ."
+
+# Run tests
+test = "pytest"
+
+# Run tests with coverage
+test-cov = "pytest --cov=src --cov-report=term-missing --cov-report=html"
+
+# Format code
+format = "black src tests scripts && isort src tests scripts"
+
+# Type checking
+type-check = "mypy src"
+
+# Lint code
+lint = "flake8 src tests scripts"
+
+# Clean build artifacts
+clean = "rm -rf build/ dist/ *.egg-info/ .pytest_cache/ htmlcov/ .coverage"
+
+# Build package
+build = "python -m build"
+
+# Install in development mode
+install-dev = "python -m pip install -e ."
+
+# Uninstall package
+uninstall = "python -m pip uninstall -y loudspeaker-py"

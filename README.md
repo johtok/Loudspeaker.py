@@ -25,12 +25,12 @@ A comprehensive Python framework for testing Controlled Functional Expansion Sys
 
 ## 🛠️ Installation
 
-This project uses [Pixi](https://pixi.rs/) as the package manager. Pixi provides fast, reliable package management and environment management.
+This project uses [pyproject.toml](pyproject.toml) for package management. The modern Python packaging standard provides reliable package management and environment management.
 
 ### Prerequisites
 
 - Python 3.10 or higher
-- Pixi (install from [pixi.rs](https://pixi.rs/))
+- pip (comes with Python)
 
 ### Quick Setup
 
@@ -38,7 +38,7 @@ This project uses [Pixi](https://pixi.rs/) as the package manager. Pixi provides
    ```bash
    git clone <repository-url>
    cd loudspeaker.py
-   pixi install
+   pip install -e .[dev]
    ```
 
 2. **Setup Jupyter kernel:**
@@ -48,24 +48,43 @@ This project uses [Pixi](https://pixi.rs/) as the package manager. Pixi provides
 
 3. **Verify installation:**
    ```bash
-   pixi run jupyter-lab
+   jupyter lab
    # Select "Loudspeaker Python (CFES)" kernel
    # Run the example_usage.ipynb notebook
    ```
 
+### Installation with Optional Dependencies
+
+Install with specific optional dependencies:
+
+```bash
+# Install with Jupyter support
+pip install -e .[jupyter]
+
+# Install with development tools
+pip install -e .[dev]
+
+# Install everything
+pip install -e .[dev,jupyter]
+```
+
 ### Manual Installation
 
-If you prefer to use pip directly:
+If you prefer to install dependencies individually:
 
 ```bash
 # Install core dependencies
+pip install numpy scipy pandas matplotlib seaborn plotly
 pip install torch torchvision torchaudio
 pip install jax jaxlib  # Follow JAX installation guide for GPU support
 pip install diffrax equinox optax
-pip install matplotlib seaborn plotly
-pip install tensorboard
-pip install jupyter jupyterlab ipykernel
-pip install black isort flake8 mypy pytest
+pip install tensorboard tqdm rich click
+
+# Install development tools
+pip install black isort flake8 mypy pytest pytest-cov pre-commit
+
+# Install Jupyter ecosystem
+pip install jupyter jupyterlab ipykernel ipywidgets notebook
 ```
 
 ## 🚀 Quick Start
@@ -212,7 +231,7 @@ loudspeaker.py/
 │   └── test_utils/               # Utility tests
 ├── examples/                     # Example notebooks
 ├── docs/                         # Documentation
-├── pixi.toml                     # Package configuration
+├── pyproject.toml                # Package configuration
 └── README.md                     # This file
 ```
 
@@ -273,10 +292,10 @@ visualize_spiral_predictions_pytorch(model, config)
 
 ```bash
 # Run all tests
-pixi run test
+pytest
 
 # Run tests with coverage
-pixi run test-cov
+pytest --cov=src --cov-report=term-missing --cov-report=html
 
 # Run specific test
 pytest tests/test_models/
@@ -286,13 +305,13 @@ pytest tests/test_models/
 
 ```bash
 # Format code
-pixi run format
+black src tests scripts && isort src tests scripts
 
 # Type checking
-pixi run type-check
+mypy src
 
 # Linting
-pixi run lint
+flake8 src tests scripts
 ```
 
 ### Adding New Features
@@ -309,6 +328,34 @@ pixi run lint
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Development Commands
+
+```bash
+# Install in development mode
+pip install -e .[dev]
+
+# Run tests
+pytest
+
+# Format code
+black src tests scripts && isort src tests scripts
+
+# Type checking
+mypy src
+
+# Lint code
+flake8 src tests scripts
+
+# Clean build artifacts
+rm -rf build/ dist/ *.egg-info/ .pytest_cache/ htmlcov/ .coverage
+
+# Build package
+python -m build
+
+# Uninstall package
+pip uninstall loudspeaker-py
+```
 
 ## 📊 Performance Comparison
 
