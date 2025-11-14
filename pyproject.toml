@@ -65,7 +65,7 @@ h5py = "*"
 pytorch = "*"
 
 [tool.pixi.pypi-dependencies]
-loudspeaker_py = { path = ".", editable = true }
+loudspeaker = { path = ".", editable = true }
 
 
 [tool.pixi.tasks]

@@ -207,7 +207,7 @@ After running `setup_jupyter_kernel.py`, you can use:
 
 ```
 loudspeaker.py/
-├── src/loudspeaker_py/           # Main package
+├── src/loudspeaker/           # Main package
 │   ├── models/                   # Neural and dynamical models
 │   │   ├── neural_cdes/          # Neural CDE implementations
 │   │   ├── dynamical_systems/    # Classical dynamical systems
@@ -316,7 +316,7 @@ flake8 src tests scripts
 
 ### Adding New Features
 
-1. Create new modules in appropriate directories under `src/loudspeaker_py/`
+1. Create new modules in appropriate directories under `src/loudspeaker/`
 2. Add tests in `tests/`
 3. Update documentation
 4. Run the full test suite

@@ -120,7 +120,7 @@ def create_sample_notebook():
                     "\n",
                     "- `scripts/neural_cde_example.py` - Neural CDE with JAX/diffrax\n",
                     "- `scripts/pytorch_cfe_example.py` - PyTorch CFES implementation\n",
-                    "- `src/loudspeaker_py/` - Main package modules\n"
+                    "- `src/loudspeaker/` - Main package modules\n"
                 ]
             },
             {

@@ -7,7 +7,7 @@ import torch
 
 # Import from our package
 try:
-    import src.loudspeaker_py.models.neural_cdes as neural_cdes
+    import src.loudspeaker.models.neural_cdes as neural_cdes
     IMPORT_SUCCESS = True
 except ImportError:
     IMPORT_SUCCESS = False

@@ -1,74 +1,75 @@
-# %% [markdown]
-# # Exp2 Mass-Spring-Damper Simulation (Diffrax)
-#
-# This stripped-down example reproduces the Exp2 mass-spring-damper (MSD)
-# configuration using only the core pieces that matter: the MSD dynamics, a
-# complex-tone forcing signal, and a Diffrax solver. Everything else from the
-# large research scripts is omitted.
+#!/usr/bin/env python3
+"""Exp3 MSD simulation demo using shared libs and forcing signals."""
 
-# %%
-import jax.numpy as jnp
-import matplotlib.pyplot as plt
-from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
+#%%
+import os
+import sys
 
-# Physical parameters taken from Exp2 / Loudspeaker.jl.
-MASS = 0.05  # kg
-NATURAL_FREQ = 25.0  # Hz
-DAMPING_RATIO = 0.01
-SAMPLE_RATE = 300  # Hz
-NUM_SAMPLES = 5  # Exp2 uses only five samples at 300 Hz
-SIM_DURATION = (NUM_SAMPLES - 1) / SAMPLE_RATE
-INITIAL_STATE = jnp.array([0.0, 0.0])  # position, velocity
-TONE_FREQUENCIES = (20.0, 24.0)  # Complex tone used in the Julia Exp2 script
+import jax.random as jr
 
-OMEGA = 2 * jnp.pi * NATURAL_FREQ
-STIFFNESS = MASS * OMEGA**2
-DAMPING = 2 * DAMPING_RATIO * MASS * OMEGA
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+for path in (SCRIPT_DIR, ROOT_DIR):
+    if path not in sys.path:
+        sys.path.append(path)
 
-
-def exp2_forcing(t: float) -> float:
-    """Two-tone excitation that mirrors `TestSignals.ComplexSine`."""
-    w1 = 2 * jnp.pi * TONE_FREQUENCIES[0]
-    w2 = 2 * jnp.pi * TONE_FREQUENCIES[1]
-    return jnp.sin(w1 * t) + jnp.sin(w2 * t)
+from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
+from loudspeaker.plotting import (
+    plot_normalized_phase_suite,
+    plot_phase,
+    plot_trajectory,
+)
+from loudspeaker.testsignals import (
+    complex_tone_control,
+    pink_noise_control,
+)
 
 
-def msd_vector_field(t, state, args):
-    """Position/velocity dynamics for the lightly damped MSD."""
-    pos, vel = state
-    force = exp2_forcing(t)
-    acc = (force - DAMPING * vel - STIFFNESS * pos) / MASS
-    return jnp.array([vel, acc])
+#%%
+def main():
+    config = MSDConfig()
+    key = jr.PRNGKey(0)
 
-
-def simulate_exp2_msd():
-    """Integrate the MSD with the Exp2 forcing at 300 Hz sampling."""
-    ts = jnp.linspace(0.0, SIM_DURATION, NUM_SAMPLES)
-    term = ODETerm(msd_vector_field)
-    solver = Tsit5()
-    sol = diffeqsolve(
-        term,
-        solver,
-        t0=0.0,
-        t1=SIM_DURATION,
-        dt0=1.0 / SAMPLE_RATE,
-        y0=INITIAL_STATE,
-        saveat=SaveAt(ts=ts),
+    pink_control = pink_noise_control(
+        num_samples=config.num_samples,
+        dt=config.dt,
+        key=key,
+        band=(1.0, 100.0),
     )
-    return sol.ts, sol.ys
+    complex_control = complex_tone_control(
+        num_samples=config.num_samples,
+        dt=config.dt,
+    )
+
+    ts, pink_states, _, pink_acc = simulate_msd_system(
+        config, pink_control, return_details=True
+    )
+    _, complex_states, _, complex_acc = simulate_msd_system(
+        config, complex_control, return_details=True
+    )
+
+    plot_trajectory(ts, pink_states, title="Pink Noise Driven MSD")
+    plot_trajectory(ts, complex_states, title="Complex Tone Driven MSD")
+    plot_phase(pink_states, title="Pink Noise Phase Portrait")
+    plot_phase(complex_states, title="Complex Tone Phase Portrait")
+    plot_normalized_phase_suite(
+        ts,
+        pink_states[:, 0],
+        pink_states[:, 1],
+        pink_acc,
+        title_prefix="Pink Noise Normalized Phase Plots",
+    )
+    plot_normalized_phase_suite(
+        ts,
+        complex_states[:, 0],
+        complex_states[:, 1],
+        complex_acc,
+        title_prefix="Complex Tone Normalized Phase Plots",
+    )
 
 
-ts, ys = simulate_exp2_msd()
-position = ys[:, 0]
-velocity = ys[:, 1]
+#%%
+if __name__ == "__main__":
+    main()
 
 # %%
-plt.figure(figsize=(8, 4))
-plt.plot(ts, position, label="position (m)")
-plt.plot(ts, velocity, label="velocity (m/s)")
-plt.title("Exp2 MSD trajectory driven by a complex tone")
-plt.xlabel("Time [s]")
-plt.ylabel("State")
-plt.legend()
-plt.tight_layout()
-plt.show()
