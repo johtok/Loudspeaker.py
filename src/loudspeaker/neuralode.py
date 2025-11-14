@@ -72,9 +72,9 @@ def solve_with_model(
 def norm_loss_fn(pred: jnp.ndarray, target: jnp.ndarray, eps: float = 1e-8) -> jnp.ndarray:
     pred_std = jnp.std(pred, axis=0, keepdims=True) + eps
     target_std = jnp.std(target, axis=0, keepdims=True) + eps
-    pred_norm = pred / pred_std
+    pred_norm = pred / target_std
     target_norm = target / target_std
-    return mse(pred_norm, target_norm)
+    return mse(pred_norm, target_norm) / pred.shape[0]
 
 
 def build_loss_fn(

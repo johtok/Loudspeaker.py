@@ -75,6 +75,6 @@ def simulate_msd_system(
     if not return_details:
         return sol.ts, sol.ys
 
-    forces = jnp.array([forcing.evaluate(float(t)) for t in ts])
+    forces = jnp.array([forcing.evaluate(float(t)) for t in ts]) #FIXME use vmap
     acc = (forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]) / config.mass
     return sol.ts, sol.ys, forces, acc
