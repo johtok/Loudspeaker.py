@@ -1,13 +1,16 @@
 [project]
 authors = [{name = "Johannes Nørskov Toke", email = "johannestoke@gmail.com"}]
 dependencies = []
-name = "loudspeaker.py"
+name = "loudspeaker"
 requires-python = ">= 3.11"
 version = "0.1.0"
 
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loudspeaker"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -100,4 +103,4 @@ build = "python -m build"
 install-dev = "python -m pip install -e ."
 
 # Uninstall package
-uninstall = "python -m pip uninstall -y loudspeaker-py"
+uninstall = "python -m pip uninstall -y loudspeaker"

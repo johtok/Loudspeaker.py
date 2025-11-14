@@ -2827,9 +2827,9 @@ packages:
   size: 3226046
   timestamp: 1762315432827
 - pypi: ./
-  name: loudspeaker-py
+  name: loudspeaker
   version: 0.1.0
-  sha256: c7500655ae184143041a6c269ae4973a7f022321021cfef6f916b7cbea33ac87
+  sha256: ef69e4e94f73a3fa7501cde1874d9a32bb829336fce1502fd0a075d0c2b4bb20
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10-pyhd8ed1ab_0.conda
