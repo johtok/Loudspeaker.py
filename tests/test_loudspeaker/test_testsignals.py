@@ -30,7 +30,7 @@ def _series_strategy():
         lambda count: st.tuples(
             st.just(count),
             hnp.arrays(
-                dtype=np.float64,
+                dtype=np.float32,
                 shape=(count,),
                 elements=element_strategy,
             ),
@@ -43,7 +43,7 @@ def _series_strategy():
 def test_build_control_signal_roundtrip(series, dt):
     num_samples, values_np = series
     ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    values = jnp.asarray(values_np)
+    values = jnp.asarray(values_np, dtype=jnp.float32)
 
     control = build_control_signal(ts, values)
     chex.assert_shape(control.values, values.shape)
@@ -51,8 +51,8 @@ def test_build_control_signal_roundtrip(series, dt):
 
 
 def test_control_signal_evaluate_batch_matches_scalar_calls():
-    ts = jnp.linspace(0.0, 1.0, 8)
-    values = jnp.sin(ts * jnp.pi)
+    ts = jnp.linspace(0.0, 1.0, 8, dtype=jnp.float32)
+    values = jnp.sin(ts * jnp.pi).astype(jnp.float32)
     control = build_control_signal(ts, values)
 
     query_ts = ts[::2]
@@ -63,9 +63,9 @@ def test_control_signal_evaluate_batch_matches_scalar_calls():
 def test_complex_tone_control_matches_manual_sum():
     num_samples = 64
     dt = 1e-2
-    freqs = jnp.array([2.0, 5.0])
-    amplitudes = jnp.array([0.5, 1.5])
-    phases = jnp.array([0.0, jnp.pi / 4.0])
+    freqs = jnp.array([2.0, 5.0], dtype=jnp.float32)
+    amplitudes = jnp.array([0.5, 1.5], dtype=jnp.float32)
+    phases = jnp.array([0.0, jnp.pi / 4.0], dtype=jnp.float32)
 
     control = complex_tone_control(
         num_samples=num_samples,

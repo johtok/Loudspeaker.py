@@ -9,7 +9,7 @@ from loudspeaker.testsignals import build_control_signal, complex_tone_control
 
 
 def _zero_control(config: MSDConfig):
-    ts = jnp.linspace(0.0, config.duration, config.num_samples)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     return build_control_signal(ts, jnp.zeros_like(ts))
 
 
@@ -41,7 +41,12 @@ def test_simulate_msd_system_return_details_matches_force():
 def test_simulate_msd_system_accepts_custom_time_grid():
     config = MSDConfig(num_samples=8)
     control = _zero_control(config)
-    custom_ts = jnp.linspace(0.0, config.duration / 2.0, config.num_samples)
+    custom_ts = jnp.linspace(
+        0.0,
+        config.duration / 2.0,
+        config.num_samples,
+        dtype=jnp.float32,
+    )
     result = simulate_msd_system(config, control, ts=custom_ts)
     chex.assert_trees_all_close(result.ts, custom_ts)
     chex.assert_shape(result.states, (config.num_samples, 2))

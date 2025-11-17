@@ -33,7 +33,7 @@ class LinearMSDModel(eqx.Module):
                 [0.0, 1.0, 0.0],
                 [-config.stiffness / config.mass, -config.damping / config.mass, 1.0 / config.mass],
             ],
-            dtype=jnp.float64,
+            dtype=jnp.float32,
         )
         if key is not None:
             base = base + perturbation * jr.normal(key, base.shape)

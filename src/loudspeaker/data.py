@@ -42,7 +42,7 @@ def build_msd_dataset(
     if band is not None and "band" not in kwargs:
         kwargs["band"] = band
 
-    ts = jnp.linspace(0.0, config.duration, config.num_samples)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     forcing_values: list[jnp.ndarray] = []
     reference_states: list[jnp.ndarray] = []
     current_key = key

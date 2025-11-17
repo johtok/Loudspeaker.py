@@ -14,21 +14,21 @@ from loudspeaker.testsignals import build_control_signal
 
 
 def _zero_control(config: MSDConfig):
-    ts = jnp.linspace(0.0, config.duration, config.num_samples)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     return build_control_signal(ts, jnp.zeros_like(ts))
 
 
 def test_linear_msd_model_behaves_like_matrix_multiplication():
     config = MSDConfig()
     model = LinearMSDModel(config=config)
-    inputs = jnp.array([1.0, -2.0, 0.5])
+    inputs = jnp.array([1.0, -2.0, 0.5], dtype=jnp.float32)
     chex.assert_trees_all_close(model(inputs), model.weight @ inputs)
 
 
 def test_build_loss_fn_with_defaults_matches_perfect_prediction():
     config = MSDConfig(num_samples=6)
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2))
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     loss_fn = build_loss_fn(
         ts=control.ts,
         initial_state=config.initial_state,
@@ -43,7 +43,7 @@ def test_build_loss_fn_with_defaults_matches_perfect_prediction():
 def test_build_loss_fn_handles_minibatches():
     config = MSDConfig(num_samples=5)
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2))
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     batch_forcing = jnp.stack([control.values, control.values])
     batch_reference = jnp.stack([reference, reference])
     loss_fn = build_loss_fn(
@@ -65,7 +65,7 @@ def test_build_loss_fn_accepts_custom_control_builder():
         return build_control_signal(ts, values)
 
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2))
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     batch = (control.values[None, ...], reference[None, ...])
 
     loss_fn = build_loss_fn(
@@ -82,7 +82,7 @@ def test_build_loss_fn_accepts_custom_control_builder():
 def test_train_model_without_dataloader_records_history():
     config = MSDConfig(num_samples=5)
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2))
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     loss_fn = build_loss_fn(
         ts=control.ts,
         initial_state=config.initial_state,
@@ -106,7 +106,7 @@ def test_train_model_without_dataloader_records_history():
 def test_train_model_with_dataloader_consumes_batches():
     config = MSDConfig(num_samples=5)
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2))
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     batch = (jnp.stack([control.values, control.values]), jnp.stack([reference, reference]))
     dataloader = itertools.repeat(batch)
     loss_fn = build_loss_fn(
@@ -128,8 +128,8 @@ def test_train_model_with_dataloader_consumes_batches():
 
 def test_training_reduces_loss_against_true_dynamics():
     config = MSDConfig(num_samples=64, sample_rate=400.0)
-    ts = jnp.linspace(0.0, config.duration, config.num_samples)
-    forcing_values = jnp.sin(2 * jnp.pi * 5.0 * ts)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    forcing_values = jnp.sin(2 * jnp.pi * 5.0 * ts).astype(jnp.float32)
     control = build_control_signal(ts, forcing_values)
     reference_states = simulate_msd_system(config, control).states
     batch = (forcing_values[None, ...], reference_states[None, ...])

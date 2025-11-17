@@ -17,7 +17,7 @@ class MSDConfig:
     sample_rate: float = 300.0  # Hz
     num_samples: int = 5
     initial_state: jnp.ndarray = field(
-        default_factory=lambda: jnp.array([0.0, 0.0], dtype=jnp.float64)
+        default_factory=lambda: jnp.array([0.0, 0.0], dtype=jnp.float32)
     )
 
     @property
@@ -26,7 +26,7 @@ class MSDConfig:
 
     @property
     def duration(self) -> float:
-        return (self.num_samples - 1) * self.dt
+        return float(self.num_samples - 1) * self.dt
 
     @property
     def _omega(self) -> float:
@@ -73,7 +73,9 @@ def simulate_msd_system(
 
     solver = solver or Tsit5()
     if ts is None:
-        ts = jnp.linspace(0.0, config.duration, config.num_samples)
+        ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    else:
+        ts = jnp.asarray(ts, dtype=jnp.float32)
     term = ODETerm(_build_vector_field(config, forcing))
     sol = diffeqsolve(
         term,

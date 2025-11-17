@@ -44,6 +44,8 @@ class ControlSignal:
 
 
 def build_control_signal(ts: jnp.ndarray, values: jnp.ndarray) -> ControlSignal:
+    ts = jnp.asarray(ts, dtype=jnp.float32)
+    values = jnp.asarray(values, dtype=jnp.float32)
     coeffs = backward_hermite_coefficients(ts, values)
     interpolation = CubicInterpolation(ts, coeffs)
     return ControlSignal(ts=ts, values=values, interpolation=interpolation)
@@ -58,18 +60,18 @@ def complex_tone_control(
 ) -> ControlSignal:
     """Complex-tone forcing sampled on the simulation grid."""
 
-    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    freqs = jnp.atleast_1d(jnp.asarray(frequencies, dtype=jnp.float64))
+    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
+    freqs = jnp.atleast_1d(jnp.asarray(frequencies, dtype=jnp.float32))
 
     if amplitudes is None:
         amplitudes = jnp.ones_like(freqs)
     else:
-        amplitudes = jnp.asarray(amplitudes, dtype=jnp.float64)
+        amplitudes = jnp.asarray(amplitudes, dtype=jnp.float32)
 
     if phases is None:
         phases = jnp.zeros_like(freqs)
     else:
-        phases = jnp.asarray(phases, dtype=jnp.float64)
+        phases = jnp.asarray(phases, dtype=jnp.float32)
 
     if amplitudes.shape != freqs.shape or phases.shape != freqs.shape:
         raise ValueError("frequencies, amplitudes, and phases must share the same length.")
@@ -95,7 +97,7 @@ def pink_noise_control(
             "colorednoise is required for pink_noise_control. Install with `pip install colorednoise`."
         )
 
-    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
+    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
     seed = int(jr.randint(key, (), 0, 2**31 - 1))
     base_np = np.asarray(
         powerlaw_psd_gaussian(
@@ -128,7 +130,7 @@ def pink_noise_control(
                 forward = signal.sosfilt(sos, base_np)
                 base_np = signal.sosfilt(sos, forward[::-1])[::-1]
 
-    base = jnp.asarray(base_np, dtype=jnp.float64)
+    base = jnp.asarray(base_np, dtype=jnp.float32)
 
     scaled = base / (jnp.std(base) + 1e-8) * amplitude
     return build_control_signal(ts, scaled)

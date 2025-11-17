@@ -13,8 +13,8 @@ from loudspeaker.testsignals import build_control_signal
 
 def _deterministic_control(num_samples: int, dt: float, key: jr.PRNGKey, **kwargs):
     del key, kwargs
-    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    values = jnp.sin(2 * jnp.pi * 5.0 * ts)
+    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
+    values = jnp.sin(2 * jnp.pi * 5.0 * ts).astype(jnp.float32)
     return build_control_signal(ts, values)
 
 

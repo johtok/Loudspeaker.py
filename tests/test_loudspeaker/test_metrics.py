@@ -33,7 +33,12 @@ def test_mse_matches_numpy(arrays):
     ref = jnp.asarray(ref_np)
     pred = jnp.asarray(pred_np)
     expected = np.mean((ref_np - pred_np) ** 2)
-    chex.assert_trees_all_close(mse(ref, pred), jnp.array(expected))
+    chex.assert_trees_all_close(
+        mse(ref, pred),
+        jnp.asarray(expected, dtype=ref.dtype),
+        atol=1e-6,
+        rtol=1e-6,
+    )
 
 
 @given(_paired_arrays())
@@ -42,4 +47,9 @@ def test_mae_matches_numpy(arrays):
     ref = jnp.asarray(ref_np)
     pred = jnp.asarray(pred_np)
     expected = np.mean(np.abs(ref_np - pred_np))
-    chex.assert_trees_all_close(mae(ref, pred), jnp.array(expected))
+    chex.assert_trees_all_close(
+        mae(ref, pred),
+        jnp.asarray(expected, dtype=ref.dtype),
+        atol=1e-6,
+        rtol=1e-6,
+    )

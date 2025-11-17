@@ -11,16 +11,16 @@ from loudspeaker.testsignals import build_control_signal
 
 
 def _constant_control(num_samples: int, dt: float, key: jr.PRNGKey, band):
-    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    amplitude = jr.normal(key, ())
+    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
+    amplitude = jr.normal(key, ()).astype(jnp.float32)
     values = jnp.ones_like(ts) * amplitude
     return build_control_signal(ts, values)
 
 
 def _scaled_control(num_samples: int, dt: float, key: jr.PRNGKey, *, scale: float = 1.0, **_):
     del key  # deterministic control for testing
-    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    values = jnp.ones_like(ts) * scale
+    ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
+    values = jnp.ones_like(ts) * jnp.float32(scale)
     return build_control_signal(ts, values)
 
 
@@ -33,7 +33,7 @@ def test_build_msd_dataset_uses_pink_noise_control(monkeypatch):
         key=jr.PRNGKey(0),
     )
     assert isinstance(dataset, MSDDataset)
-    expected_ts = jnp.linspace(0.0, config.duration, config.num_samples)
+    expected_ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     chex.assert_trees_all_close(dataset.ts, expected_ts)
     chex.assert_shape(dataset.forcing, (4, config.num_samples))
     chex.assert_shape(dataset.reference, (4, config.num_samples, 2))
@@ -66,7 +66,7 @@ def test_build_msd_dataset_accepts_custom_forcing_fn():
 def test_msd_dataloader_without_strategy_emits_batches():
     num_samples = 5
     dataset_size = 3
-    forcing = jnp.arange(dataset_size * num_samples, dtype=jnp.float64).reshape(dataset_size, num_samples)
+    forcing = jnp.arange(dataset_size * num_samples, dtype=jnp.float32).reshape(dataset_size, num_samples)
     reference = jnp.stack([jnp.column_stack([row, row]) for row in forcing])
     loader = msd_dataloader(
         forcing,
@@ -83,7 +83,7 @@ def test_msd_dataloader_without_strategy_emits_batches():
 def test_msd_dataloader_with_strategy_truncates_sequences():
     num_samples = 10
     dataset_size = 4
-    forcing = jnp.tile(jnp.arange(num_samples, dtype=jnp.float64), (dataset_size, 1))
+    forcing = jnp.tile(jnp.arange(num_samples, dtype=jnp.float32), (dataset_size, 1))
     reference = jnp.stack([jnp.column_stack([row, row]) for row in forcing])
     strategy = StaticTrainingStrategy(steps=1, length_fraction=0.4)
     expected_length = max(2, int(num_samples * 0.4))
