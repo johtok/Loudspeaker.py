@@ -30,9 +30,11 @@ from loudspeaker.neuralode import (
 )
 from loudspeaker.plotting import plot_loss, plot_residuals, plot_trajectory
 from loudspeaker.testsignals import build_control_signal
+jax.config.update("jax_enable_x64", True)
 
 
 #%%
+@jax.jit
 def main(
     optimizer_factory=optax.sgd,
     loss="mse",

@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
+from diffrax import ODETerm, SaveAt, Tsit5, PIDController, diffeqsolve
 
 from .metrics import mse
 from .msd_sim import MSDConfig
@@ -68,6 +68,7 @@ def solve_with_model(
         dt0=dt,
         y0=initial_state,
         saveat=SaveAt(ts=ts),
+        stepsize_controller=PIDController(rtol=1e-8, atol=1e-8),
     )
     return sol.ys
 

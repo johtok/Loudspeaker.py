@@ -88,6 +88,7 @@ test = "pytest tests/test_loudspeaker"
 test-all = "pytest tests/test_loudspeaker tests/benchmarks"
 test-cov = "pytest --cov=src --cov-report=term-missing --cov-report=html tests/test_loudspeaker"
 bench = "pytest tests/benchmarks --benchmark-only"
+benchmark = "pytest tests/benchmarks/test_performance.py --benchmark-only"
 
 # Format code
 format = "black src tests scripts && isort src tests scripts"
