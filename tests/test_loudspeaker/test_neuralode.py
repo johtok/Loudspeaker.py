@@ -18,7 +18,7 @@ from loudspeaker.neuralode import (
     LinearLoudspeakerModel,
     LinearMSDModel,
     NeuralODE,
-    ReservoirMSDModel,
+    AugmentedMSDModel,
     build_loss_fn,
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
@@ -207,7 +207,7 @@ def test_reservoir_model_produces_expected_state_dimension():
     num_samples = 20
     ts = jnp.linspace(0.0, 0.019, num_samples, dtype=jnp.float32)
     forcing = build_control_signal(ts, jnp.ones_like(ts))
-    model = ReservoirMSDModel(state_size=4, key=jr.PRNGKey(0))
+    model = AugmentedMSDModel(state_size=4, key=jr.PRNGKey(0))
     initial_state = jnp.zeros(4, dtype=jnp.float32)
     states = solve_with_model(model, ts, forcing, initial_state, dt=ts[1] - ts[0])
     chex.assert_shape(states, (num_samples, 4))

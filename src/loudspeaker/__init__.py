@@ -15,7 +15,7 @@ from .neuralode import (
     NeuralODE,
     LinearLoudspeakerModel,
     LinearMSDModel,
-    ReservoirMSDModel,
+    AugmentedMSDModel,
     build_loss_fn,
     norm_loss_fn,
     plot_neural_ode_loss,

@@ -63,7 +63,7 @@ class LinearLoudspeakerModel(_LinearModel):
         super().__init__(weight=base)
 
 
-class ReservoirMSDModel(_LinearModel):
+class AugmentedMSDModel(_LinearModel):
     """Random linear reservoir that augments MSD dynamics with extra states."""
 
     def __init__(

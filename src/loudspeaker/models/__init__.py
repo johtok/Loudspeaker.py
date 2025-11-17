@@ -3,7 +3,7 @@
 from .linear import (
     LinearLoudspeakerModel,
     LinearMSDModel,
-    ReservoirMSDModel,
+    AugmentedMSDModel,
     _LinearModel,
 )
 

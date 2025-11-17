@@ -16,7 +16,7 @@ from .metrics import mse
 from .models import (
     LinearLoudspeakerModel,
     LinearMSDModel,
-    ReservoirMSDModel,
+    AugmentedMSDModel,
     _LinearModel,
 )
 from .plotting import plot_loss as plot_loss_curve
@@ -57,7 +57,6 @@ class NeuralODE:
 
 
 def solve_with_model(
-    model: _LinearModel,
     ts: jnp.ndarray,
     forcing: ControlSignal,
     initial_state: jnp.ndarray,
