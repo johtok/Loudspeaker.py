@@ -39,6 +39,10 @@ jax.config.update("jax_enable_x64", True)
 Batch = Tuple[jnp.ndarray, jnp.ndarray]
 
 
+def _evaluation_batches(forcing: jnp.ndarray, reference: jnp.ndarray) -> list[Batch]:
+    return [(forcing[i : i + 1], reference[i : i + 1]) for i in range(forcing.shape[0])]
+
+
 def _single_batch_loader(batch: Batch) -> Iterable[Batch]:
     yield batch
 
@@ -82,10 +86,13 @@ def main(
     batch_size: int = 4,
     num_steps: int = 200,
     strategy: TrainingStrategy | None = None,
+    train_fraction: float = 0.8,
 ):
     config = LoudspeakerConfig(num_samples=num_samples)
+    if dataset_size < 2:
+        raise ValueError("dataset_size must be at least 2 to support train/test split.")
     key = jr.PRNGKey(8)
-    data_key, model_key = jr.split(key)
+    data_key, model_key, loader_key = jr.split(key, 3)
 
     ts, forcing_values, reference_states = _build_loudspeaker_dataset(
         config=config,
@@ -93,20 +100,29 @@ def main(
         key=data_key,
     )
 
+    train_size = max(1, int(train_fraction * dataset_size))
+    if train_size == dataset_size:
+        train_size -= 1
+    test_size = dataset_size - train_size
+    train_forcing, test_forcing = forcing_values[:train_size], forcing_values[train_size:]
+    train_reference, test_reference = reference_states[:train_size], reference_states[train_size:]
+
     if strategy is None:
         strategy = StaticTrainingStrategy(steps=num_steps)
     total_steps = strategy.total_steps
 
     def dataloader():
-        dataset_size = forcing_values.shape[0]
+        dataset_size = train_forcing.shape[0]
         perm = jnp.arange(dataset_size)
+        rng = loader_key
         while True:
-            perm = jr.permutation(model_key, perm)
+            rng, perm_key = jr.split(rng)
+            perm = jr.permutation(perm_key, perm)
             for start in range(0, dataset_size, batch_size):
                 end = start + batch_size
                 if end <= dataset_size:
                     idx = perm[start:end]
-                    yield forcing_values[idx], reference_states[idx]
+                    yield train_forcing[idx], train_reference[idx]
 
     model = LinearLoudspeakerModel(config=config, key=model_key)
     optimizer = optimizer_factory(learning_rate=1e-3)
@@ -129,13 +145,23 @@ def main(
 
     trained = train_neural_ode(neural_ode, dataloader())
 
-    eval_batch = (forcing_values[:1], reference_states[:1])
+    eval_batch = (test_forcing[:1], test_reference[:1])
     predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
     eval_prediction = predictions[0]
     eval_reference = targets[0]
 
     print("Final MAE:", float(mae(eval_prediction, eval_reference)))
     print("Final MSE:", float(mse(eval_prediction, eval_reference)))
+
+    if test_size > 0:
+        test_loader = iter(_evaluation_batches(test_forcing, test_reference))
+        test_predictions, test_targets = predict_neural_ode(trained, test_loader)
+        test_mse = float(mse(test_predictions, test_targets))
+        print("Test set MSE:", test_mse)
+
+    base_model = LinearLoudspeakerModel(config=config)
+    param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
+    print("State matrix parameter MSE:", param_mse)
 
     plot_neural_ode_predictions(
         trained,

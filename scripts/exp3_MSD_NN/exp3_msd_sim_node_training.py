@@ -7,6 +7,7 @@ import sys
 from typing import Iterable, Tuple
 
 import jax
+import jax.numpy as jnp
 import jax.random as jr
 import optax
 
@@ -39,6 +40,10 @@ jax.config.update("jax_enable_x64", True)
 Batch = Tuple[jax.Array, jax.Array]
 
 
+def _evaluation_batches(forcing: jnp.ndarray, reference: jnp.ndarray) -> list[Batch]:
+    return [(forcing[i : i + 1], reference[i : i + 1]) for i in range(forcing.shape[0])]
+
+
 def _single_batch_loader(batch: Batch) -> Iterable[Batch]:
     yield batch
 
@@ -52,25 +57,38 @@ def main(
     batch_size: int = 8,
     num_steps: int = 400,
     strategy: TrainingStrategy | None = None,
+    train_fraction: float = 0.8,
 ):
     config = MSDConfig(num_samples=num_samples)
+    if dataset_size < 2:
+        raise ValueError("dataset_size must be at least 2 to support train/test split.")
     key = jr.PRNGKey(42)
     data_key, model_key, loader_key = jr.split(key, 3)
 
-    ts, forcing_values, reference_states = build_msd_dataset(
+    dataset = build_msd_dataset(
         config=config,
         dataset_size=dataset_size,
         key=data_key,
         band=(1.0, 100.0),
     )
+    ts = dataset.ts
+    forcing_values = dataset.forcing
+    reference_states = dataset.reference
+
+    train_size = max(1, int(train_fraction * dataset_size))
+    if train_size == dataset_size:
+        train_size -= 1
+    test_size = dataset_size - train_size
+    train_forcing, test_forcing = forcing_values[:train_size], forcing_values[train_size:]
+    train_reference, test_reference = reference_states[:train_size], reference_states[train_size:]
 
     if strategy is None:
         strategy = StaticTrainingStrategy(steps=num_steps)
     total_steps = strategy.total_steps
 
     data_loader = msd_dataloader(
-        forcing_values,
-        reference_states,
+        train_forcing,
+        train_reference,
         batch_size=batch_size,
         key=loader_key,
         strategy=strategy,
@@ -97,13 +115,23 @@ def main(
 
     trained = train_neural_ode(neural_ode, data_loader)
 
-    eval_batch = (forcing_values[:1], reference_states[:1])
+    eval_batch = (test_forcing[:1], test_reference[:1])
     predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
     eval_prediction = predictions[0]
     eval_reference = targets[0]
 
     print("Final MAE:", float(mae(eval_prediction, eval_reference)))
     print("Final MSE:", float(mse(eval_prediction, eval_reference)))
+
+    if test_size > 0:
+        test_loader = iter(_evaluation_batches(test_forcing, test_reference))
+        test_predictions, test_targets = predict_neural_ode(trained, test_loader)
+        test_mse = float(mse(test_predictions, test_targets))
+        print("Test set MSE:", test_mse)
+
+    base_model = LinearMSDModel(config=config)
+    param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
+    print("State matrix parameter MSE:", param_mse)
 
     plot_neural_ode_predictions(
         trained,
