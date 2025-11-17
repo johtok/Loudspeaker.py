@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/loudspeaker"]
+packages = ["src/loudspeaker", "src/models"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]

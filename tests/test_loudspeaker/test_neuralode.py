@@ -13,10 +13,10 @@ import pytest
 from diffrax import PIDController
 
 from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
+from loudspeaker.loudspeaker_sim import LoudspeakerConfig
 from loudspeaker.neuralode import (
     LinearLoudspeakerModel,
     LinearMSDModel,
-    LoudspeakerConfig,
     NeuralODE,
     ReservoirMSDModel,
     build_loss_fn,

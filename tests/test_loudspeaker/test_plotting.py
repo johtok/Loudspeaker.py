@@ -56,3 +56,16 @@ def test_plot_normalized_phase_suite_returns_axes_array():
         np.gradient(states[:, 1], ts),
     )
     assert axes.shape == (2, 2)
+
+
+def test_plot_phase_fan_supports_multiple_states():
+    _, states = _sample_states()
+    extended = np.column_stack([states, states[:, 0]])
+    ax = plotting.plot_phase_fan(extended)
+    assert ax is not None
+
+
+def test_plot_timeseries_bundle_can_normalize():
+    ts, states = _sample_states()
+    ax = plotting.plot_timeseries_bundle(ts, states, normalized=True)
+    assert ax is not None

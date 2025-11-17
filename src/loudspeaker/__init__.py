@@ -6,11 +6,15 @@ from .data import (
     msd_dataloader,
 )
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
+from .loudspeaker_sim import (
+    LoudspeakerConfig,
+    LoudspeakerSimulationResult,
+    simulate_loudspeaker_system,
+)
 from .neuralode import (
     NeuralODE,
     LinearLoudspeakerModel,
     LinearMSDModel,
-    LoudspeakerConfig,
     ReservoirMSDModel,
     build_loss_fn,
     norm_loss_fn,
@@ -25,6 +29,8 @@ from .plotting import (
     plot_loss,
     plot_normalized_phase_suite,
     plot_phase,
+    plot_phase_fan,
+    plot_timeseries_bundle,
     plot_residuals,
     plot_trajectory,
 )
@@ -44,6 +50,8 @@ __all__ = [
     "MSDConfig",
     "SimulationResult",
     "simulate_msd_system",
+    "LoudspeakerSimulationResult",
+    "simulate_loudspeaker_system",
     "LinearMSDModel",
     "LinearLoudspeakerModel",
     "ReservoirMSDModel",
@@ -59,7 +67,9 @@ __all__ = [
     "train_neural_ode",
     "plot_loss",
     "plot_phase",
+    "plot_phase_fan",
     "plot_normalized_phase_suite",
+    "plot_timeseries_bundle",
     "plot_residuals",
     "plot_trajectory",
     "mae",

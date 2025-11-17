@@ -17,9 +17,8 @@ from loudspeaker import (
     MSDConfig,
     complex_tone_control,
     pink_noise_control,
-    plot_normalized_phase_suite,
-    plot_phase,
-    plot_trajectory,
+    plot_phase_fan,
+    plot_timeseries_bundle,
     simulate_msd_system,
 )
 
@@ -56,24 +55,37 @@ def main():
     pink_acc = pink_result.acceleration
     complex_acc = complex_result.acceleration
 
-    plot_trajectory(ts, pink_states, title="Pink Noise Driven MSD")
-    plot_trajectory(ts, complex_states, title="Complex Tone Driven MSD")
-    plot_phase(pink_states, title="Pink Noise Phase Portrait")
-    plot_phase(complex_states, title="Complex Tone Phase Portrait")
-    plot_normalized_phase_suite(
-        ts,
-        pink_states[:, 0],
-        pink_states[:, 1],
-        pink_acc,
-        title_prefix="Pink Noise Normalized Phase Plots",
-    )
-    plot_normalized_phase_suite(
-        ts,
-        complex_states[:, 0],
-        complex_states[:, 1],
-        complex_acc,
-        title_prefix="Complex Tone Normalized Phase Plots",
-    )
+    labels = ("position", "velocity")
+    for name, states in (
+        ("Pink Noise", pink_states),
+        ("Complex Tone", complex_states),
+    ):
+        plot_phase_fan(
+            states,
+            labels=labels,
+            normalized=False,
+            title=f"{name} Phase",
+        )
+        plot_phase_fan(
+            states,
+            labels=labels,
+            normalized=True,
+            title=f"{name} Phase",
+        )
+        plot_timeseries_bundle(
+            ts,
+            states,
+            labels=labels,
+            normalized=False,
+            title=f"{name} Timeseries",
+        )
+        plot_timeseries_bundle(
+            ts,
+            states,
+            labels=labels,
+            normalized=True,
+            title=f"{name} Timeseries",
+        )
 
 
 #%%

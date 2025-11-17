@@ -8,6 +8,12 @@ import numpy as np
 import numpy.typing as npt
 
 
+def _normalize_data(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    mean = values.mean(axis=0, keepdims=True)
+    std = values.std(axis=0, keepdims=True) + 1e-8
+    return (values - mean) / std, mean, std
+
+
 def _get_ax(ax: Axes | None = None) -> Axes:
     if ax is None:
         _, ax = plt.subplots()
@@ -137,3 +143,64 @@ def plot_normalized_phase_suite(
         fig.tight_layout()
 
     return axes
+
+
+def plot_phase_fan(
+    states: npt.ArrayLike,
+    *,
+    normalized: bool = False,
+    labels: Iterable[str] | None = None,
+    title: str = "Phase Fan Plot",
+    colors: Iterable[str] | None = None,
+) -> Axes:
+    states_np = np.asarray(states)
+    if states_np.ndim != 2 or states_np.shape[1] < 2:
+        raise ValueError("states must be (num_samples, num_dims>=2) for phase fan plots.")
+    plot_values = states_np
+    if normalized:
+        plot_values, _, _ = _normalize_data(states_np)
+    label_list = list(labels) if labels is not None else [f"state_{i}" for i in range(states_np.shape[1])]
+    color_list = list(colors) if colors is not None else ["C0", "C1", "C2", "C3"]
+    _, ax = plt.subplots(figsize=(6, 4))
+    base = plot_values[:, 0]
+    for idx in range(1, plot_values.shape[1]):
+        ax.plot(base, plot_values[:, idx], label=f"{label_list[0]} vs {label_list[idx]}", color=color_list[idx % len(color_list)])
+    mode = "Normalized" if normalized else "Raw"
+    ax.set_xlabel(label_list[0])
+    ax.set_ylabel("State value")
+    ax.set_title(f"{title} ({mode})")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    return ax
+
+
+def plot_timeseries_bundle(
+    ts: npt.ArrayLike,
+    states: npt.ArrayLike,
+    *,
+    normalized: bool = False,
+    labels: Iterable[str] | None = None,
+    title: str = "Timeseries Bundle",
+    colors: Iterable[str] | None = None,
+) -> Axes:
+    ts_np = np.asarray(ts)
+    states_np = np.asarray(states)
+    if states_np.ndim != 2:
+        raise ValueError("states must be (num_samples, num_dims) for time-series bundles.")
+    if ts_np.shape[0] != states_np.shape[0]:
+        raise ValueError("ts must match number of samples.")
+    plot_values = states_np
+    if normalized:
+        plot_values, _, _ = _normalize_data(states_np)
+    label_list = list(labels) if labels is not None else [f"state_{i}" for i in range(states_np.shape[1])]
+    color_list = list(colors) if colors is not None else ["C0", "C1", "C2", "C3"]
+    _, ax = plt.subplots(figsize=(8, 4))
+    for idx in range(plot_values.shape[1]):
+        ax.plot(ts_np, plot_values[:, idx], label=label_list[idx], color=color_list[idx % len(color_list)])
+    mode = "Normalized" if normalized else "Raw"
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("State value")
+    ax.set_title(f"{title} ({mode})")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    return ax
