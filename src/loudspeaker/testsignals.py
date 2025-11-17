@@ -3,11 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Tuple
 
+import numpy as np
 import jax.numpy as jnp
 import jax.random as jr
+from jax import tree_util
 from diffrax import CubicInterpolation, backward_hermite_coefficients
+from scipy import signal
+
+try:  # Lazy import to avoid hard dependency at import time.
+    from colorednoise import powerlaw_psd_gaussian
+except ModuleNotFoundError:  # pragma: no cover - handled at runtime when needed
+    powerlaw_psd_gaussian = None
 
 
+@tree_util.register_pytree_node_class
 @dataclass
 class ControlSignal:
     """Callable wrapper for forcing signals sampled on a grid."""
@@ -19,8 +28,17 @@ class ControlSignal:
     def evaluate(self, t: float) -> float:
         return self.interpolation.evaluate(t)
 
+    def tree_flatten(self):
+        children = (self.ts, self.values, self.interpolation)
+        return children, None
 
-def _build_control(ts: jnp.ndarray, values: jnp.ndarray) -> ControlSignal:
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        ts, values, interpolation = children
+        return cls(ts=ts, values=values, interpolation=interpolation)
+
+
+def build_control_signal(ts: jnp.ndarray, values: jnp.ndarray) -> ControlSignal:
     coeffs = backward_hermite_coefficients(ts, values)
     interpolation = CubicInterpolation(ts, coeffs)
     return ControlSignal(ts=ts, values=values, interpolation=interpolation)
@@ -50,7 +68,7 @@ def complex_tone_control(
     signal = jnp.zeros_like(ts)
     for amp, freq, phase in zip(amplitudes, freqs, phases):
         signal = signal + amp * jnp.sin(2 * jnp.pi * freq * ts + phase)
-    return _build_control(ts, signal)
+    return build_control_signal(ts, signal)
 
 
 def pink_noise_control(
@@ -61,21 +79,47 @@ def pink_noise_control(
     exponent: float = 1.0,
     amplitude: float = 1.0,
 ) -> ControlSignal:
-    """Band-passed pink noise forcing with cubic interpolation."""
+    """Band-passed pink noise forcing built from the colorednoise library."""
+
+    if powerlaw_psd_gaussian is None:  # pragma: no cover - informative error path
+        raise ImportError(
+            "colorednoise is required for pink_noise_control. Install with `pip install colorednoise`."
+        )
 
     ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    white = jr.normal(key, (num_samples,))
-    freqs = jnp.fft.fftfreq(num_samples, dt)
-    spectrum = jnp.fft.fft(white)
-    mag = jnp.where(
-        freqs == 0.0,
-        0.0,
-        1.0 / (jnp.abs(freqs) ** (exponent / 2)),
+    seed = int(jr.randint(key, (), 0, 2**31 - 1))
+    base_np = np.asarray(
+        powerlaw_psd_gaussian(
+            0.0 if band is None else exponent, num_samples, random_state=seed
+        ),
+        dtype=float,
     )
-    mag = jnp.where(jnp.isfinite(mag), mag, 0.0)
-    f_low, f_high = band
-    mask = (jnp.abs(freqs) >= f_low) & (jnp.abs(freqs) <= f_high)
-    filtered = spectrum * mag * mask
-    pink_noise = jnp.fft.ifft(filtered).real
-    pink_noise = pink_noise / (jnp.std(pink_noise) + 1e-8) * amplitude
-    return _build_control(ts, pink_noise)
+
+    if band is not None:
+        f_low, f_high = band
+        if f_low <= 0 or f_high <= f_low:
+            raise ValueError("band must satisfy 0 < f_low < f_high.")
+        fs = 1.0 / dt
+        nyquist = fs / 2.0
+        if f_high >= nyquist:
+            raise ValueError(f"Upper band edge {f_high} exceeds Nyquist {nyquist}.")
+        sos = signal.butter(4, [f_low, f_high], btype="bandpass", fs=fs, output="sos")
+        # Zero-phase IIR filtering before converting to JAX arrays.
+        try:
+            base_np = signal.sosfiltfilt(sos, base_np)
+        except ValueError:
+            padlen = max(min(num_samples - 1, 3 * sos.shape[0] * 2), 0)
+            if padlen > 0:
+                try:
+                    base_np = signal.sosfiltfilt(sos, base_np, padlen=padlen)
+                except ValueError:
+                    forward = signal.sosfilt(sos, base_np)
+                    base_np = signal.sosfilt(sos, forward[::-1])[::-1]
+            else:
+                forward = signal.sosfilt(sos, base_np)
+                base_np = signal.sosfilt(sos, forward[::-1])[::-1]
+
+    base = jnp.asarray(base_np, dtype=jnp.float64)
+
+    scaled = base / (jnp.std(base) + 1e-8) * amplitude
+    return build_control_signal(ts, scaled)

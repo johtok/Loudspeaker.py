@@ -1,6 +1,6 @@
 [project]
 authors = [{name = "Johannes Nørskov Toke", email = "johannestoke@gmail.com"}]
-dependencies = []
+dependencies = ["colorednoise>=2.2.0,<3"]
 name = "loudspeaker"
 requires-python = ">= 3.11"
 version = "0.1.0"

@@ -5,6 +5,7 @@
 import os
 import sys
 
+import jax.numpy as jnp
 import jax.random as jr
 import optax
 
@@ -23,28 +24,91 @@ from loudspeaker.neuralode import (
     train_model,
 )
 from loudspeaker.plotting import plot_loss, plot_residuals, plot_trajectory
-from loudspeaker.testsignals import pink_noise_control
+from loudspeaker.testsignals import build_control_signal, pink_noise_control
+
+
+def build_msd_dataset(
+    config: MSDConfig,
+    dataset_size: int,
+    key: jr.PRNGKey,
+    band: tuple[float, float] = (1.0, 100.0),
+):
+    if dataset_size <= 0:
+        raise ValueError("dataset_size must be positive")
+    forcing_values = []
+    reference_states = []
+    ts = None
+    current_key = key
+    for _ in range(dataset_size):
+        current_key, forcing_key = jr.split(current_key)
+        forcing = pink_noise_control(
+            num_samples=config.num_samples,
+            dt=config.dt,
+            key=forcing_key,
+            band=band,
+        )
+        ts, reference = simulate_msd_system(config, forcing)
+        forcing_values.append(forcing.values)
+        reference_states.append(reference)
+    if ts is None:
+        raise RuntimeError("Failed to generate MSD dataset.")
+    return ts, jnp.stack(forcing_values), jnp.stack(reference_states)
+
+
+def msd_dataloader(
+    forcing_values: jnp.ndarray,
+    reference_states: jnp.ndarray,
+    batch_size: int,
+    *,
+    key: jr.PRNGKey,
+):
+    dataset_size = forcing_values.shape[0]
+    if batch_size > dataset_size:
+        raise ValueError("batch_size cannot exceed dataset size")
+    indices = jnp.arange(dataset_size)
+    rng = key
+    while True:
+        rng, perm_key = jr.split(rng)
+        perm = jr.permutation(perm_key, indices)
+        start = 0
+        end = batch_size
+        while end <= dataset_size:
+            batch_idx = perm[start:end]
+            yield forcing_values[batch_idx], reference_states[batch_idx]
+            start = end
+            end = start + batch_size
 
 
 #%%
-def main(opt=optax.sgd,loss="mse",num_samples=20):
+def main(
+    optimizer_factory=optax.sgd,
+    loss="mse",
+    num_samples=20,
+    dataset_size=128,
+    batch_size=8,
+    num_steps=400,
+):
     config = MSDConfig(num_samples=num_samples)
     key = jr.PRNGKey(42)
+    data_key, model_key, loader_key = jr.split(key, 3)
 
-    forcing = pink_noise_control(
-        num_samples=config.num_samples,
-        dt=config.dt,
-        key=key,
+    ts, forcing_values, reference_states = build_msd_dataset(
+        config=config,
+        dataset_size=dataset_size,
+        key=data_key,
         band=(1.0, 100.0),
     )
-    ts, reference_states = simulate_msd_system(config, forcing)
+    data_loader = msd_dataloader(
+        forcing_values,
+        reference_states,
+        batch_size=batch_size,
+        key=loader_key,
+    )
 
-    model = LinearMSDModel(config=config, key=jr.PRNGKey(0))
-    optimizer = opt(1e-2)
+    model = LinearMSDModel(config=config, key=model_key)
+    optimizer = optimizer_factory(learning_rate=1e-2)
     loss_fn = build_loss_fn(
         ts=ts,
-        forcing=forcing,
-        reference=reference_states,
         initial_state=config.initial_state,
         dt=config.dt,
         loss_type=loss,
@@ -54,23 +118,26 @@ def main(opt=optax.sgd,loss="mse",num_samples=20):
         model=model,
         loss_fn=loss_fn,
         optimizer=optimizer,
-        num_steps=400,
+        num_steps=num_steps,
+        dataloader=data_loader,
     )
 
+    eval_forcing = build_control_signal(ts, forcing_values[0])
+    eval_reference = reference_states[0]
     predictions = solve_with_model(
         trained_model,
         ts=ts,
-        forcing=forcing,
+        forcing=eval_forcing,
         initial_state=config.initial_state,
         dt=config.dt,
     )
 
-    print("Final MAE:", float(mae(predictions, reference_states)))
-    print("Final MSE:", float(mse(predictions, reference_states)))
+    print("Final MAE:", float(mae(predictions, eval_reference)))
+    print("Final MSE:", float(mse(predictions, eval_reference)))
 
     ax = plot_trajectory(
         ts,
-        reference_states,
+        eval_reference,
         labels=("reference position", "reference velocity"),
         title="Reference vs Predicted Trajectory",
     )
@@ -81,31 +148,29 @@ def main(opt=optax.sgd,loss="mse",num_samples=20):
         ax=ax,
         title=None,
     )
-    plot_residuals(ts, reference_states, predictions)
+    plot_residuals(ts, eval_reference, predictions)
     plot_loss(loss_history)
 
 
 #%%
 if __name__ == "__main__":
-   opt=optax.sgd
-   loss="mse"
-   num_samples=20
-   print(f"Running {opt.__name__}, with loss={loss} on {num_samples} samples")
-   main()
+    print("Training Neural ODE with pink-noise forcing dataloader...")
+    main()
 
 # %%
 if __name__ == "__main__":
-   opt=optax.sgd
-   loss="norm_mse"
-   num_samples=20
-   print(f"Running {opt.__name__}, with loss={loss} on {num_samples} samples")
-   main()
+    print("Training Neural ODE with pink-noise forcing dataloader...")
+    main(optimizer_factory=optax.adam)
 
 # %%
 if __name__ == "__main__":
-   opt=optax.adam
-   loss="mse"
-   num_samples=20
-   print(f"Running {opt.__name__}, with loss={loss} on {num_samples} samples")
-   main()
+    print("Training Neural ODE with pink-noise forcing dataloader...")
+    main(optimizer_factory=optax.adamw)
 # %%
+if __name__ == "__main__":
+    print("Training Neural ODE with pink-noise forcing dataloader...")
+    main(optimizer_factory=optax.nadam)
+# %%
+if __name__ == "__main__":
+    print("Training Neural ODE with pink-noise forcing dataloader...")
+    main(optimizer_factory=optax.lion)
