@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence, Optional
+from typing import Iterable, Sequence
 
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 
 
-def _get_ax(ax=None):
+def _get_ax(ax: Axes | None = None) -> Axes:
     if ax is None:
         _, ax = plt.subplots()
     return ax
 
 
 def plot_trajectory(
-    ts: Sequence[float],
-    states: np.ndarray,
+    ts: Sequence[float] | npt.ArrayLike,
+    states: npt.ArrayLike,
     labels: Iterable[str] = ("position", "velocity"),
-    ax=None,
-    title: Optional[str] = "State Trajectories",
-):
+    ax: Axes | None = None,
+    title: str | None = "State Trajectories",
+) -> Axes:
     ax = _get_ax(ax)
     states_np = np.asarray(states)
     for dim, label in enumerate(labels):
@@ -32,10 +34,10 @@ def plot_trajectory(
 
 
 def plot_phase(
-    states: np.ndarray,
-    ax=None,
+    states: npt.ArrayLike,
+    ax: Axes | None = None,
     title: str = "Phase Portrait",
-):
+) -> Axes:
     ax = _get_ax(ax)
     states_np = np.asarray(states)
     ax.plot(states_np[:, 0], states_np[:, 1], marker="o")
@@ -46,13 +48,13 @@ def plot_phase(
 
 
 def plot_residuals(
-    ts: Sequence[float],
-    target: np.ndarray,
-    prediction: np.ndarray,
+    ts: Sequence[float] | npt.ArrayLike,
+    target: npt.ArrayLike,
+    prediction: npt.ArrayLike,
     labels: Iterable[str] = ("position", "velocity"),
-    ax=None,
+    ax: Axes | None = None,
     title: str = "Residuals",
-):
+) -> Axes:
     ax = _get_ax(ax)
     target_np = np.asarray(target)
     prediction_np = np.asarray(prediction)
@@ -68,9 +70,9 @@ def plot_residuals(
 
 def plot_loss(
     losses: Sequence[float],
-    ax=None,
+    ax: Axes | None = None,
     title: str = "Training Loss",
-):
+) -> Axes:
     ax = _get_ax(ax)
     ax.plot(losses)
     ax.set_xlabel("Step")
@@ -80,12 +82,12 @@ def plot_loss(
 
 
 def plot_normalized_phase_suite(
-    ts: Sequence[float],
-    position: np.ndarray,
-    velocity: np.ndarray,
-    acceleration: np.ndarray,
+    ts: Sequence[float] | npt.ArrayLike,
+    position: npt.ArrayLike,
+    velocity: npt.ArrayLike,
+    acceleration: npt.ArrayLike,
     title_prefix: str = "",
-):
+) -> npt.NDArray[np.object_]:
     """Replicates the normalized phase plots used in the full MSD visualizer."""
 
     pos = np.asarray(position)

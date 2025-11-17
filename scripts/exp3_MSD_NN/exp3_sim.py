@@ -13,15 +13,14 @@ for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
 
-from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
-from loudspeaker.plotting import (
+from loudspeaker import (
+    MSDConfig,
+    complex_tone_control,
+    pink_noise_control,
     plot_normalized_phase_suite,
     plot_phase,
     plot_trajectory,
-)
-from loudspeaker.testsignals import (
-    complex_tone_control,
-    pink_noise_control,
+    simulate_msd_system,
 )
 
 

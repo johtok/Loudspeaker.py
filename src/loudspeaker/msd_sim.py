@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, Callable
+
 import jax.numpy as jnp
 from jax import tree_util
 from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
@@ -20,23 +22,23 @@ class MSDConfig:
     )
 
     @property
-    def dt(self) -> float:
+    def dt(self: "MSDConfig") -> float:
         return 1.0 / self.sample_rate
 
     @property
-    def duration(self) -> float:
+    def duration(self: "MSDConfig") -> float:
         return float(self.num_samples - 1) * self.dt
 
     @property
-    def _omega(self) -> float:
+    def _omega(self: "MSDConfig") -> float:
         return 2 * jnp.pi * self.natural_frequency
 
     @property
-    def stiffness(self) -> float:
+    def stiffness(self: "MSDConfig") -> float:
         return self.mass * self._omega**2
 
     @property
-    def damping(self) -> float:
+    def damping(self: "MSDConfig") -> float:
         return 2 * self.damping_ratio * self.mass * self._omega
 
 
@@ -48,21 +50,29 @@ class SimulationResult:
     forces: jnp.ndarray | None = None
     acceleration: jnp.ndarray | None = None
 
-    def has_details(self) -> bool:
+    def has_details(self: "SimulationResult") -> bool:
         return self.forces is not None and self.acceleration is not None
 
-    def tree_flatten(self):
+    def tree_flatten(
+        self: "SimulationResult",
+    ) -> tuple[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None], None]:
         children = (self.ts, self.states, self.forces, self.acceleration)
         return children, None
 
     @classmethod
-    def tree_unflatten(cls, aux_data, children):
+    def tree_unflatten(
+        cls: type["SimulationResult"],
+        aux_data: Any,
+        children: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None],
+    ) -> "SimulationResult":
         ts, states, forces, acceleration = children
         return cls(ts=ts, states=states, forces=forces, acceleration=acceleration)
 
 
-def _build_vector_field(config: MSDConfig, forcing: ControlSignal):
-    def vf(t, state, args):
+def _build_vector_field(
+    config: MSDConfig, forcing: ControlSignal
+) -> Callable[[float, jnp.ndarray, Any], jnp.ndarray]:
+    def vf(t: float, state: jnp.ndarray, args: Any) -> jnp.ndarray:
         pos, vel = state
         force = forcing.evaluate(t)
         acc = (force - config.damping * vel - config.stiffness * pos) / config.mass

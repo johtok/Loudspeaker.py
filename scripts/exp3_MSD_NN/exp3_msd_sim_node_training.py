@@ -4,7 +4,9 @@
 #%%
 import os
 import sys
+from typing import Iterable, Tuple
 
+import jax
 import jax.random as jr
 import optax
 
@@ -24,24 +26,31 @@ from loudspeaker.metrics import mae, mse
 from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.neuralode import (
     LinearMSDModel,
+    NeuralODE,
     build_loss_fn,
-    solve_with_model,
-    train_model,
+    plot_neural_ode_loss,
+    plot_neural_ode_predictions,
+    predict_neural_ode,
+    train_neural_ode,
 )
-from loudspeaker.plotting import plot_loss, plot_residuals, plot_trajectory
-from loudspeaker.testsignals import build_control_signal
+
 jax.config.update("jax_enable_x64", True)
+
+Batch = Tuple[jax.Array, jax.Array]
+
+
+def _single_batch_loader(batch: Batch) -> Iterable[Batch]:
+    yield batch
 
 
 #%%
-@jax.jit
 def main(
     optimizer_factory=optax.sgd,
-    loss="mse",
-    num_samples=20,
-    dataset_size=128,
-    batch_size=8,
-    num_steps=400,
+    loss: str = "mse",
+    num_samples: int = 20,
+    dataset_size: int = 128,
+    batch_size: int = 8,
+    num_steps: int = 400,
     strategy: TrainingStrategy | None = None,
 ):
     config = MSDConfig(num_samples=num_samples)
@@ -76,63 +85,56 @@ def main(
         loss_type=loss,
     )
 
-    trained_model, loss_history = train_model(
+    neural_ode = NeuralODE(
         model=model,
         loss_fn=loss_fn,
         optimizer=optimizer,
-        num_steps=total_steps,
-        dataloader=data_loader,
-    )
-
-    eval_forcing = build_control_signal(ts, forcing_values[0])
-    eval_reference = reference_states[0]
-    predictions = solve_with_model(
-        trained_model,
         ts=ts,
-        forcing=eval_forcing,
         initial_state=config.initial_state,
         dt=config.dt,
+        num_steps=total_steps,
     )
 
-    print("Final MAE:", float(mae(predictions, eval_reference)))
-    print("Final MSE:", float(mse(predictions, eval_reference)))
+    trained = train_neural_ode(neural_ode, data_loader)
 
-    ax = plot_trajectory(
-        ts,
-        eval_reference,
-        labels=("reference position", "reference velocity"),
+    eval_batch = (forcing_values[:1], reference_states[:1])
+    predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
+    eval_prediction = predictions[0]
+    eval_reference = targets[0]
+
+    print("Final MAE:", float(mae(eval_prediction, eval_reference)))
+    print("Final MSE:", float(mse(eval_prediction, eval_reference)))
+
+    plot_neural_ode_predictions(
+        trained,
+        _single_batch_loader(eval_batch),
+        max_batches=1,
         title="Reference vs Predicted Trajectory",
     )
-    plot_trajectory(
-        ts,
-        predictions,
-        labels=("predicted position", "predicted velocity"),
-        ax=ax,
-        title=None,
-    )
-    plot_residuals(ts, eval_reference, predictions)
-    plot_loss(loss_history)
+    plot_neural_ode_loss(trained)
 
 
 #%%
 if __name__ == "__main__":
-    print("Training Neural ODE with pink-noise forcing dataloader...")
+    print("Training Neural ODE with pink-noise forcing dataloader (SGD)...")
     main()
 
 # %%
 if __name__ == "__main__":
-    print("Training Neural ODE with pink-noise forcing dataloader...")
+    print("Training Neural ODE with pink-noise forcing dataloader (Adam)...")
     main(optimizer_factory=optax.adam)
 
 # %%
 if __name__ == "__main__":
-    print("Training Neural ODE with pink-noise forcing dataloader...")
+    print("Training Neural ODE with pink-noise forcing dataloader (AdamW)...")
     main(optimizer_factory=optax.adamw)
 # %%
 if __name__ == "__main__":
-    print("Training Neural ODE with pink-noise forcing dataloader...")
+    print("Training Neural ODE with pink-noise forcing dataloader (Nadam)...")
     main(optimizer_factory=optax.nadam)
 # %%
 if __name__ == "__main__":
-    print("Training Neural ODE with pink-noise forcing dataloader...")
+    print("Training Neural ODE with pink-noise forcing dataloader (Lion)...")
     main(optimizer_factory=optax.lion)
+
+# %%

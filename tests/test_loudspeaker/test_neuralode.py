@@ -5,6 +5,9 @@ import itertools
 import chex
 import jax.numpy as jnp
 import jax.random as jr
+import matplotlib
+
+matplotlib.use("Agg")
 import optax
 import pytest
 from diffrax import PIDController
@@ -14,10 +17,15 @@ from loudspeaker.neuralode import (
     LinearLoudspeakerModel,
     LinearMSDModel,
     LoudspeakerConfig,
+    NeuralODE,
     ReservoirMSDModel,
     build_loss_fn,
+    plot_neural_ode_loss,
+    plot_neural_ode_predictions,
+    predict_neural_ode,
     solve_with_model,
     train_model,
+    train_neural_ode,
 )
 from loudspeaker.testsignals import build_control_signal
 
@@ -203,3 +211,102 @@ def test_reservoir_model_produces_expected_state_dimension():
     initial_state = jnp.zeros(4, dtype=jnp.float32)
     states = solve_with_model(model, ts, forcing, initial_state, dt=ts[1] - ts[0])
     chex.assert_shape(states, (num_samples, 4))
+
+
+def test_train_neural_ode_wrapper_records_history():
+    config = MSDConfig(num_samples=5)
+    control = _zero_control(config)
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
+    batch = (control.values[None, ...], reference[None, ...])
+    dataloader = itertools.repeat(batch)
+    loss_fn = build_loss_fn(
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+    )
+    neural_ode = NeuralODE(
+        model=LinearMSDModel(config=config),
+        loss_fn=loss_fn,
+        optimizer=optax.sgd(learning_rate=1e-2),
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        num_steps=3,
+    )
+    trained = train_neural_ode(neural_ode, dataloader)
+    assert trained.history
+    assert len(trained.history) == 4
+
+
+def test_predict_neural_ode_returns_predictions_and_targets():
+    config = MSDConfig(num_samples=6)
+    control = _zero_control(config)
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
+    batch = (control.values[None, ...], reference[None, ...])
+    loss_fn = build_loss_fn(
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+    )
+    neural_ode = NeuralODE(
+        model=LinearMSDModel(config=config),
+        loss_fn=loss_fn,
+        optimizer=optax.sgd(learning_rate=1e-2),
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        num_steps=1,
+    )
+    predictions, targets = predict_neural_ode(neural_ode, iter([batch]), max_batches=1)
+    assert predictions.shape == targets.shape
+    assert predictions.shape[0] == 1
+
+
+def test_plot_neural_ode_loss_returns_axis():
+    config = MSDConfig(num_samples=4)
+    control = _zero_control(config)
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
+    batch = (control.values[None, ...], reference[None, ...])
+    loss_fn = build_loss_fn(
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+    )
+    neural_ode = NeuralODE(
+        model=LinearMSDModel(config=config),
+        loss_fn=loss_fn,
+        optimizer=optax.sgd(learning_rate=1e-2),
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        num_steps=2,
+    )
+    neural_ode.history = [0.0, 0.1, 0.05]
+    ax = plot_neural_ode_loss(neural_ode)
+    assert ax is not None
+    assert len(ax.lines) == 1
+
+
+def test_plot_neural_ode_predictions_returns_axes():
+    config = MSDConfig(num_samples=5)
+    control = _zero_control(config)
+    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
+    batch = (control.values[None, ...], reference[None, ...])
+    loss_fn = build_loss_fn(
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+    )
+    neural_ode = NeuralODE(
+        model=LinearMSDModel(config=config),
+        loss_fn=loss_fn,
+        optimizer=optax.sgd(learning_rate=1e-2),
+        ts=control.ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        num_steps=1,
+    )
+    axes = plot_neural_ode_predictions(neural_ode, iter([batch]), max_batches=1)
+    assert isinstance(axes, tuple)
+    assert len(axes) == 2
+    assert all(ax is not None for ax in axes)

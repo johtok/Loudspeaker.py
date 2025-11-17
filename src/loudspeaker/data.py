@@ -11,6 +11,7 @@ from .testsignals import ControlSignal, pink_noise_control
 
 
 ForcingFactory = Callable[..., ControlSignal]
+Batch = tuple[jnp.ndarray, jnp.ndarray]
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class MSDDataset:
     forcing: jnp.ndarray
     reference: jnp.ndarray
 
-    def __iter__(self):
+    def __iter__(self: MSDDataset) -> Iterator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
         return iter((self.ts, self.forcing, self.reference))
 
 
@@ -85,15 +86,15 @@ class TrainingStrategy:
             raise ValueError("TrainingStrategy requires at least one phase.")
         self._phases = tuple(phases)
 
-    def __iter__(self) -> Iterator[StrategyPhase]:
+    def __iter__(self: TrainingStrategy) -> Iterator[StrategyPhase]:
         return iter(self._phases)
 
     @property
-    def phases(self) -> tuple[StrategyPhase, ...]:
+    def phases(self: TrainingStrategy) -> tuple[StrategyPhase, ...]:
         return self._phases
 
     @property
-    def total_steps(self) -> int:
+    def total_steps(self: TrainingStrategy) -> int:
         return sum(phase.steps for phase in self._phases)
 
 
@@ -111,7 +112,7 @@ def _phase_length(num_samples: int, fraction: float) -> int:
     return min(length, num_samples)
 
 
-def _permuted_batch_indices(dataset_size: int, batch_size: int, key: jr.PRNGKey):
+def _permuted_batch_indices(dataset_size: int, batch_size: int, key: jr.PRNGKey) -> Iterator[jnp.ndarray]:
     rng = key
     while True:
         rng, perm_key = jr.split(rng)
@@ -129,7 +130,7 @@ def msd_dataloader(
     *,
     key: jr.PRNGKey,
     strategy: TrainingStrategy | None = None,
-):
+) -> Iterator[Batch]:
     """Iterate over MSD samples with optional curriculum strategy."""
 
     dataset_size = forcing_values.shape[0]

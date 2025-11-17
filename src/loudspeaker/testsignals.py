@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Tuple
+from typing import Any, Iterable, Self, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -26,19 +26,25 @@ class ControlSignal:
     values: jnp.ndarray
     interpolation: CubicInterpolation
 
-    def evaluate(self, t: float) -> float:
+    def evaluate(self: Self, t: float) -> float:
         return self.interpolation.evaluate(t)
 
-    def evaluate_batch(self, ts: jnp.ndarray) -> jnp.ndarray:
+    def evaluate_batch(self: Self, ts: jnp.ndarray) -> jnp.ndarray:
         """Vectorized evaluation over a batch of time samples."""
         return jax.vmap(self.interpolation.evaluate)(ts)
 
-    def tree_flatten(self):
+    def tree_flatten(
+        self: Self,
+    ) -> tuple[tuple[jnp.ndarray, jnp.ndarray, CubicInterpolation], None]:
         children = (self.ts, self.values, self.interpolation)
         return children, None
 
     @classmethod
-    def tree_unflatten(cls, aux_data, children):
+    def tree_unflatten(
+        cls: type[Self],
+        aux_data: Any,
+        children: tuple[jnp.ndarray, jnp.ndarray, CubicInterpolation],
+    ) -> Self:
         ts, values, interpolation = children
         return cls(ts=ts, values=values, interpolation=interpolation)
 
