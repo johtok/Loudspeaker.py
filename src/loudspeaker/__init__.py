@@ -7,7 +7,10 @@ from .data import (
 )
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
 from .neuralode import (
+    LinearLoudspeakerModel,
     LinearMSDModel,
+    LoudspeakerConfig,
+    ReservoirMSDModel,
     build_loss_fn,
     norm_loss_fn,
     solve_with_model,
@@ -37,6 +40,9 @@ __all__ = [
     "SimulationResult",
     "simulate_msd_system",
     "LinearMSDModel",
+    "LinearLoudspeakerModel",
+    "ReservoirMSDModel",
+    "LoudspeakerConfig",
     "build_loss_fn",
     "norm_loss_fn",
     "solve_with_model",

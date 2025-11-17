@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Callable, Iterable, Tuple
 
 import equinox as eqx
@@ -7,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from diffrax import ODETerm, SaveAt, Tsit5, PIDController, diffeqsolve
+from diffrax import ODETerm, PIDController, SaveAt, Tsit5, diffeqsolve
 
 from .metrics import mse
 from .msd_sim import MSDConfig
@@ -17,10 +18,15 @@ from .testsignals import ControlSignal, build_control_signal
 ControlBuilder = Callable[[jnp.ndarray, jnp.ndarray], ControlSignal]
 
 
-class LinearMSDModel(eqx.Module):
-    """Single dense layer without bias (2x3 parameters)."""
-
+class _LinearModel(eqx.Module):
     weight: jax.Array
+
+    def __call__(self, inputs: jax.Array) -> jax.Array:
+        return self.weight @ inputs
+
+
+class LinearMSDModel(_LinearModel):
+    """Single dense layer without bias (2x3 parameters)."""
 
     def __init__(
         self,
@@ -37,27 +43,106 @@ class LinearMSDModel(eqx.Module):
         )
         if key is not None:
             base = base + perturbation * jr.normal(key, base.shape)
-        self.weight = base
+        super().__init__(weight=base)
 
-    def __call__(self, inputs: jax.Array) -> jax.Array:
-        return self.weight @ inputs
+
+@dataclass(frozen=True)
+class LoudspeakerConfig:
+    moving_mass: float = 0.02  # kg
+    compliance: float = 1.8e-4  # m/N
+    damping: float = 0.4  # N*s/m
+    motor_force: float = 7.0  # N/A
+    voice_coil_resistance: float = 6.0  # Ohm
+    voice_coil_inductance: float = 0.5e-3  # H
+    sample_rate: float = 48000.0
+    num_samples: int = 512
+    initial_state: jnp.ndarray = field(
+        default_factory=lambda: jnp.array([0.0, 0.0, 0.0], dtype=jnp.float32)
+    )
+
+    @property
+    def stiffness(self) -> float:
+        return 1.0 / self.compliance
+
+    @property
+    def dt(self) -> float:
+        return 1.0 / self.sample_rate
+
+    @property
+    def duration(self) -> float:
+        return float(self.num_samples - 1) * self.dt
+
+
+class LinearLoudspeakerModel(_LinearModel):
+    """Three-state loudspeaker model capturing cone and coil dynamics."""
+
+    def __init__(
+        self,
+        config: LoudspeakerConfig,
+        perturbation: float = 0.01,
+        key: jr.PRNGKey | None = None,
+    ):
+        inv_mass = 1.0 / config.moving_mass
+        inv_inductance = 1.0 / config.voice_coil_inductance
+        base = jnp.array(
+            [
+                [0.0, 1.0, 0.0, 0.0],
+                [-config.stiffness * inv_mass, -config.damping * inv_mass, config.motor_force * inv_mass, 0.0],
+                [0.0, -config.motor_force * inv_inductance, -config.voice_coil_resistance * inv_inductance, inv_inductance],
+            ],
+            dtype=jnp.float32,
+        )
+        if key is not None:
+            base = base + perturbation * jr.normal(key, base.shape)
+        super().__init__(weight=base)
+
+
+class ReservoirMSDModel(_LinearModel):
+    """Random linear reservoir that augments MSD dynamics with extra states."""
+
+    def __init__(
+        self,
+        state_size: int,
+        *,
+        key: jr.PRNGKey,
+        scale: float = 0.1,
+    ):
+        if state_size <= 0:
+            raise ValueError("state_size must be positive.")
+        weight_shape = (state_size, state_size + 1)
+        self_key, _ = jr.split(key)
+        base = scale * jr.normal(self_key, weight_shape, dtype=jnp.float32)
+        super().__init__(weight=base)
 
 
 def solve_with_model(
-    model: LinearMSDModel,
+    model: _LinearModel,
     ts: jnp.ndarray,
     forcing: ControlSignal,
     initial_state: jnp.ndarray,
     dt: float,
     solver: Tsit5 | None = None,
+    *,
+    stepsize_controller: PIDController | None = None,
+    rtol: float = 1e-5,
+    atol: float = 1e-5,
 ) -> jnp.ndarray:
     """Integrate the neural ODE with the provided forcing."""
 
     solver = solver or Tsit5()
+    controller = stepsize_controller or PIDController(rtol=rtol, atol=atol)
+
+    state_dim = model.weight.shape[0]
+    input_dim = model.weight.shape[1]
+    expected_input = state_dim + 1
+    if input_dim != expected_input:
+        raise ValueError(
+            f"Model expects {input_dim} inputs but only supports state_dim + force ({expected_input})."
+        )
 
     def vf(t, y, args):
         force = forcing.evaluate(t)
-        inputs = jnp.array([y[0], y[1], force])
+        inputs = jnp.concatenate([y, jnp.array([force], dtype=jnp.float32)])
         return model(inputs)
 
     sol = diffeqsolve(
@@ -68,7 +153,7 @@ def solve_with_model(
         dt0=dt,
         y0=initial_state,
         saveat=SaveAt(ts=ts),
-        stepsize_controller=PIDController(rtol=1e-8, atol=1e-8),
+        stepsize_controller=controller,
     )
     return sol.ys
 
@@ -91,7 +176,11 @@ def build_loss_fn(
     reference: jnp.ndarray | None = None,
     *,
     control_builder: ControlBuilder = build_control_signal,
-) -> Callable[[LinearMSDModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray]:
+    solver: Tsit5 | None = None,
+    stepsize_controller: PIDController | None = None,
+    rtol: float = 1e-5,
+    atol: float = 1e-5,
+) -> Callable[[_LinearModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray]:
     if (forcing is None) ^ (reference is None):
         raise ValueError(
             "If providing a default forcing/reference pair, both must be supplied."
@@ -110,11 +199,21 @@ def build_loss_fn(
         )
 
     def _solve(
-        model: LinearMSDModel,
+        model: _LinearModel,
         time_grid: jnp.ndarray,
         control: ControlSignal,
     ) -> jnp.ndarray:
-        return solve_with_model(model, time_grid, control, initial_state, dt)
+        return solve_with_model(
+            model,
+            time_grid,
+            control,
+            initial_state,
+            dt,
+            solver=solver,
+            stepsize_controller=stepsize_controller,
+            rtol=rtol,
+            atol=atol,
+        )
 
     def loss_fn(
         model: LinearMSDModel,
@@ -156,13 +255,13 @@ def _batch_iterator(dataloader: Iterable[Tuple[jnp.ndarray, jnp.ndarray]] | None
 
 
 def train_model(
-    model: LinearMSDModel,
-    loss_fn: Callable[[LinearMSDModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray],
+    model: _LinearModel,
+    loss_fn: Callable[[_LinearModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray],
     optimizer: optax.GradientTransformation,
     num_steps: int,
     dataloader: Iterable[Tuple[jnp.ndarray, jnp.ndarray]] | None = None,
 ) -> Tuple[LinearMSDModel, list[float]]:
-    history: list[float] = []
+    history: list[float] = [0.0]
 
     loss_and_grad = eqx.filter_value_and_grad(
         lambda current_model, batch: loss_fn(current_model, batch)

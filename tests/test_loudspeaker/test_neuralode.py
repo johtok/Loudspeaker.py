@@ -7,9 +7,18 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 import pytest
+from diffrax import PIDController
 
 from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
-from loudspeaker.neuralode import LinearMSDModel, build_loss_fn, train_model
+from loudspeaker.neuralode import (
+    LinearLoudspeakerModel,
+    LinearMSDModel,
+    LoudspeakerConfig,
+    ReservoirMSDModel,
+    build_loss_fn,
+    solve_with_model,
+    train_model,
+)
 from loudspeaker.testsignals import build_control_signal
 
 
@@ -99,7 +108,8 @@ def test_train_model_without_dataloader_records_history():
         num_steps=3,
         dataloader=None,
     )
-    assert len(history) == 3
+    assert len(history) == 4
+    assert history[0] == 0.0
     assert trained is not None
 
 
@@ -123,7 +133,7 @@ def test_train_model_with_dataloader_consumes_batches():
         num_steps=2,
         dataloader=dataloader,
     )
-    assert len(history) == 2
+    assert len(history) == 3
 
 
 def test_training_reduces_loss_against_true_dynamics():
@@ -153,5 +163,43 @@ def test_training_reduces_loss_against_true_dynamics():
     )
     final_loss = float(loss_fn(trained, batch))
     assert final_loss <= baseline_loss
-    assert history[0] == pytest.approx(baseline_loss, rel=1e-6)
-    assert history[-1] <= history[0]
+    assert history[1] == pytest.approx(baseline_loss, rel=1e-6)
+    assert history[-1] <= history[1]
+
+
+def test_solve_with_model_runs_with_pid_controller():
+    config = MSDConfig(num_samples=16, sample_rate=200.0)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    forcing = build_control_signal(ts, jnp.ones_like(ts))
+    model = LinearMSDModel(config=config)
+    controller = PIDController(rtol=1e-4, atol=1e-4)
+    states = solve_with_model(
+        model,
+        ts,
+        forcing,
+        config.initial_state,
+        config.dt,
+        stepsize_controller=controller,
+        rtol=1e-4,
+        atol=1e-4,
+    )
+    chex.assert_shape(states, (config.num_samples, 2))
+
+
+def test_linear_loudspeaker_model_solves():
+    config = LoudspeakerConfig(num_samples=64, sample_rate=8000.0)
+    ts = jnp.linspace(0.0, (config.num_samples - 1) * config.dt, config.num_samples, dtype=jnp.float32)
+    forcing = build_control_signal(ts, jnp.cos(2 * jnp.pi * 50.0 * ts))
+    model = LinearLoudspeakerModel(config=config, key=jr.PRNGKey(42))
+    states = solve_with_model(model, ts, forcing, config.initial_state, config.dt, rtol=1e-4, atol=1e-4)
+    chex.assert_shape(states, (config.num_samples, 3))
+
+
+def test_reservoir_model_produces_expected_state_dimension():
+    num_samples = 20
+    ts = jnp.linspace(0.0, 0.019, num_samples, dtype=jnp.float32)
+    forcing = build_control_signal(ts, jnp.ones_like(ts))
+    model = ReservoirMSDModel(state_size=4, key=jr.PRNGKey(0))
+    initial_state = jnp.zeros(4, dtype=jnp.float32)
+    states = solve_with_model(model, ts, forcing, initial_state, dt=ts[1] - ts[0])
+    chex.assert_shape(states, (num_samples, 4))
