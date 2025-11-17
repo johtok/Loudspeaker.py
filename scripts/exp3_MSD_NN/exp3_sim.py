@@ -41,12 +41,21 @@ def main():
         dt=config.dt,
     )
 
-    ts, pink_states, _, pink_acc = simulate_msd_system(
-        config, pink_control, return_details=True
+    pink_result = simulate_msd_system(
+        config,
+        pink_control,
+        capture_details=True,
     )
-    _, complex_states, _, complex_acc = simulate_msd_system(
-        config, complex_control, return_details=True
+    complex_result = simulate_msd_system(
+        config,
+        complex_control,
+        capture_details=True,
     )
+    ts = pink_result.ts
+    pink_states = pink_result.states
+    complex_states = complex_result.states
+    pink_acc = pink_result.acceleration
+    complex_acc = complex_result.acceleration
 
     plot_trajectory(ts, pink_states, title="Pink Noise Driven MSD")
     plot_trajectory(ts, complex_states, title="Complex Tone Driven MSD")

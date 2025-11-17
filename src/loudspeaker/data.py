@@ -1,46 +1,68 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Sequence, Tuple
+from typing import Any, Callable, Iterator, Mapping, Sequence, Tuple
 
 import jax.numpy as jnp
 import jax.random as jr
 
-from .msd_sim import MSDConfig, simulate_msd_system
-from .testsignals import pink_noise_control
+from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
+from .testsignals import ControlSignal, pink_noise_control
+
+
+ForcingFactory = Callable[..., ControlSignal]
+
+
+@dataclass(frozen=True)
+class MSDDataset:
+    ts: jnp.ndarray
+    forcing: jnp.ndarray
+    reference: jnp.ndarray
+
+    def __iter__(self):
+        return iter((self.ts, self.forcing, self.reference))
 
 
 def build_msd_dataset(
     config: MSDConfig,
     dataset_size: int,
     key: jr.PRNGKey,
-    band: Tuple[float, float] = (1.0, 100.0),
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Simulate random pink-noise trajectories for MSD training."""
+    band: Tuple[float, float] | None = (1.0, 100.0),
+    *,
+    forcing_fn: ForcingFactory | None = None,
+    forcing_kwargs: Mapping[str, Any] | None = None,
+) -> MSDDataset:
+    """Simulate random forcing trajectories for MSD training."""
 
     if dataset_size <= 0:
         raise ValueError("dataset_size must be positive")
 
+    forcing_fn = forcing_fn or pink_noise_control
+    kwargs = dict(forcing_kwargs or {})
+    if band is not None and "band" not in kwargs:
+        kwargs["band"] = band
+
+    ts = jnp.linspace(0.0, config.duration, config.num_samples)
     forcing_values: list[jnp.ndarray] = []
     reference_states: list[jnp.ndarray] = []
-    ts = None
     current_key = key
     for _ in range(dataset_size):
         current_key, forcing_key = jr.split(current_key)
-        forcing = pink_noise_control(
+        forcing = forcing_fn(
             num_samples=config.num_samples,
             dt=config.dt,
             key=forcing_key,
-            band=band,
+            **kwargs,
         )
-        ts, reference = simulate_msd_system(config, forcing)
+        sim_result: SimulationResult = simulate_msd_system(config, forcing, ts=ts)
         forcing_values.append(forcing.values)
-        reference_states.append(reference)
+        reference_states.append(sim_result.states)
 
-    if ts is None:
-        raise RuntimeError("Failed to generate MSD dataset.")
-
-    return ts, jnp.stack(forcing_values), jnp.stack(reference_states)
+    return MSDDataset(
+        ts=ts,
+        forcing=jnp.stack(forcing_values),
+        reference=jnp.stack(reference_states),
+    )
 
 
 @dataclass(frozen=True)
@@ -89,6 +111,17 @@ def _phase_length(num_samples: int, fraction: float) -> int:
     return min(length, num_samples)
 
 
+def _permuted_batch_indices(dataset_size: int, batch_size: int, key: jr.PRNGKey):
+    rng = key
+    while True:
+        rng, perm_key = jr.split(rng)
+        perm = jr.permutation(perm_key, dataset_size)
+        for start in range(0, dataset_size, batch_size):
+            end = start + batch_size
+            if end <= dataset_size:
+                yield perm[start:end]
+
+
 def msd_dataloader(
     forcing_values: jnp.ndarray,
     reference_states: jnp.ndarray,
@@ -105,39 +138,22 @@ def msd_dataloader(
     if reference_states.shape[0] != dataset_size:
         raise ValueError("forcing/reference dataset mismatch")
 
-    indices = jnp.arange(dataset_size)
-    rng = key
     num_samples = forcing_values.shape[1]
+    batch_indices = _permuted_batch_indices(dataset_size, batch_size, key)
 
     if strategy is None:
         while True:
-            rng, perm_key = jr.split(rng)
-            perm = jr.permutation(perm_key, indices)
-            start = 0
-            end = batch_size
-            while end <= dataset_size:
-                batch_idx = perm[start:end]
-                yield forcing_values[batch_idx], reference_states[batch_idx]
-                start = end
-                end = start + batch_size
+            batch_idx = next(batch_indices)
+            yield forcing_values[batch_idx], reference_states[batch_idx]
         return
 
     phases = strategy.phases
     while True:
         for phase in phases:
-            steps_remaining = phase.steps
             phase_length = _phase_length(num_samples, phase.length_fraction)
-            while steps_remaining > 0:
-                rng, perm_key = jr.split(rng)
-                perm = jr.permutation(perm_key, indices)
-                start = 0
-                end = batch_size
-                while end <= dataset_size and steps_remaining > 0:
-                    batch_idx = perm[start:end]
-                    yield (
-                        forcing_values[batch_idx, :phase_length],
-                        reference_states[batch_idx, :phase_length],
-                    )
-                    start = end
-                    end = start + batch_size
-                    steps_remaining -= 1
+            for _ in range(phase.steps):
+                batch_idx = next(batch_indices)
+                yield (
+                    forcing_values[batch_idx, :phase_length],
+                    reference_states[batch_idx, :phase_length],
+                )

@@ -3,7 +3,8 @@
 import pytest
 import jax
 import jax.numpy as jnp
-import torch
+
+torch = pytest.importorskip("torch", reason="PyTorch required for neural CDE tests")
 
 # Import from our package
 try:

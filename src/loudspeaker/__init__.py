@@ -1,10 +1,11 @@
 from .data import (
+    MSDDataset,
     StaticTrainingStrategy,
     TrainingStrategy,
     build_msd_dataset,
     msd_dataloader,
 )
-from .msd_sim import MSDConfig, simulate_msd_system
+from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
 from .neuralode import (
     LinearMSDModel,
     build_loss_fn,
@@ -29,9 +30,11 @@ from .testsignals import (
 __all__ = [
     "StaticTrainingStrategy",
     "TrainingStrategy",
+    "MSDDataset",
     "build_msd_dataset",
     "msd_dataloader",
     "MSDConfig",
+    "SimulationResult",
     "simulate_msd_system",
     "LinearMSDModel",
     "build_loss_fn",

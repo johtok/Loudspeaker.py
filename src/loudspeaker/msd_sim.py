@@ -9,7 +9,7 @@ from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
 from .testsignals import ControlSignal
 
 
-@dataclass
+@dataclass(frozen=True)
 class MSDConfig:
     mass: float = 0.05  # kg
     natural_frequency: float = 25.0  # Hz
@@ -41,6 +41,17 @@ class MSDConfig:
         return 2 * self.damping_ratio * self.mass * self._omega
 
 
+@dataclass(frozen=True)
+class SimulationResult:
+    ts: jnp.ndarray
+    states: jnp.ndarray
+    forces: jnp.ndarray | None = None
+    acceleration: jnp.ndarray | None = None
+
+    def has_details(self) -> bool:
+        return self.forces is not None and self.acceleration is not None
+
+
 def _build_vector_field(config: MSDConfig, forcing: ControlSignal):
     def vf(t, state, args):
         pos, vel = state
@@ -55,26 +66,29 @@ def simulate_msd_system(
     config: MSDConfig,
     forcing: ControlSignal,
     solver: Tsit5 | None = None,
-    return_details: bool = False,
-) -> Tuple:
+    ts: jnp.ndarray | None = None,
+    capture_details: bool = False,
+) -> SimulationResult:
     """Simulate the MSD system with a provided forcing signal."""
 
     solver = solver or Tsit5()
-    ts = jnp.linspace(0.0, config.duration, config.num_samples)
+    if ts is None:
+        ts = jnp.linspace(0.0, config.duration, config.num_samples)
     term = ODETerm(_build_vector_field(config, forcing))
     sol = diffeqsolve(
         term,
         solver,
         t0=0.0,
-        t1=config.duration,
+        t1=ts[-1],
         dt0=config.dt,
         y0=config.initial_state,
         saveat=SaveAt(ts=ts),
     )
 
-    if not return_details:
-        return sol.ts, sol.ys
+    forces = None
+    acc = None
+    if capture_details:
+        forces = forcing.evaluate_batch(ts)
+        acc = (forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]) / config.mass
 
-    forces = jnp.array([forcing.evaluate(float(t)) for t in ts]) #FIXME use vmap
-    acc = (forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]) / config.mass
-    return sol.ts, sol.ys, forces, acc
+    return SimulationResult(ts=sol.ts, states=sol.ys, forces=forces, acceleration=acc)

@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Tuple
 
-import numpy as np
+import jax
 import jax.numpy as jnp
 import jax.random as jr
-from jax import tree_util
+import numpy as np
 from diffrax import CubicInterpolation, backward_hermite_coefficients
 from scipy import signal
+from jax import tree_util
 
 try:  # Lazy import to avoid hard dependency at import time.
     from colorednoise import powerlaw_psd_gaussian
@@ -27,6 +28,10 @@ class ControlSignal:
 
     def evaluate(self, t: float) -> float:
         return self.interpolation.evaluate(t)
+
+    def evaluate_batch(self, ts: jnp.ndarray) -> jnp.ndarray:
+        """Vectorized evaluation over a batch of time samples."""
+        return jax.vmap(self.interpolation.evaluate)(ts)
 
     def tree_flatten(self):
         children = (self.ts, self.values, self.interpolation)
@@ -54,20 +59,24 @@ def complex_tone_control(
     """Complex-tone forcing sampled on the simulation grid."""
 
     ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples)
-    freqs_tuple = tuple(frequencies)
-    if amplitudes is None:
-        amplitudes = jnp.ones(len(freqs_tuple))
-    else:
-        amplitudes = jnp.array(list(amplitudes))
-    if phases is None:
-        phases = jnp.zeros(len(freqs_tuple))
-    else:
-        phases = jnp.array(list(phases))
+    freqs = jnp.atleast_1d(jnp.asarray(frequencies, dtype=jnp.float64))
 
-    freqs = jnp.array(freqs_tuple)
-    signal = jnp.zeros_like(ts)
-    for amp, freq, phase in zip(amplitudes, freqs, phases):
-        signal = signal + amp * jnp.sin(2 * jnp.pi * freq * ts + phase)
+    if amplitudes is None:
+        amplitudes = jnp.ones_like(freqs)
+    else:
+        amplitudes = jnp.asarray(amplitudes, dtype=jnp.float64)
+
+    if phases is None:
+        phases = jnp.zeros_like(freqs)
+    else:
+        phases = jnp.asarray(phases, dtype=jnp.float64)
+
+    if amplitudes.shape != freqs.shape or phases.shape != freqs.shape:
+        raise ValueError("frequencies, amplitudes, and phases must share the same length.")
+
+    omega_t = 2 * jnp.pi * freqs[:, None] * ts[None, :] + phases[:, None]
+    components = amplitudes[:, None] * jnp.sin(omega_t)
+    signal = jnp.sum(components, axis=0)
     return build_control_signal(ts, signal)
 
 

@@ -14,6 +14,9 @@ from .msd_sim import MSDConfig
 from .testsignals import ControlSignal, build_control_signal
 
 
+ControlBuilder = Callable[[jnp.ndarray, jnp.ndarray], ControlSignal]
+
+
 class LinearMSDModel(eqx.Module):
     """Single dense layer without bias (2x3 parameters)."""
 
@@ -84,6 +87,8 @@ def build_loss_fn(
     loss_type: str = "mse",
     forcing: ControlSignal | None = None,
     reference: jnp.ndarray | None = None,
+    *,
+    control_builder: ControlBuilder = build_control_signal,
 ) -> Callable[[LinearMSDModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray]:
     if (forcing is None) ^ (reference is None):
         raise ValueError(
@@ -128,7 +133,7 @@ def build_loss_fn(
         def sample_loss(forcing_values, target_values):
             length = forcing_values.shape[0]
             time_grid = ts[:length]
-            control = build_control_signal(time_grid, forcing_values)
+            control = control_builder(time_grid, forcing_values)
             prediction = _solve(model, time_grid, control)
             return _loss(prediction, target_values[:length])
 
@@ -136,6 +141,16 @@ def build_loss_fn(
         return jnp.mean(losses)
 
     return loss_fn
+
+
+def _batch_iterator(dataloader: Iterable[Tuple[jnp.ndarray, jnp.ndarray]] | None):
+    if dataloader is None:
+        while True:
+            yield None
+
+    iterator = iter(dataloader)
+    while True:
+        yield next(iterator)
 
 
 def train_model(
@@ -147,25 +162,11 @@ def train_model(
 ) -> Tuple[LinearMSDModel, list[float]]:
     history: list[float] = []
 
-    if dataloader is None:
-        loss_and_grad = eqx.filter_value_and_grad(lambda m: loss_fn(m, None))
-
-        @eqx.filter_jit
-        def step(model, opt_state):
-            loss, grads = loss_and_grad(model)
-            updates, opt_state = optimizer.update(grads, opt_state)
-            model = eqx.apply_updates(model, updates)
-            return model, opt_state, loss
-
-        opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
-        for _ in range(num_steps):
-            model, opt_state, loss = step(model, opt_state)
-            history.append(float(loss))
-        return model, history
-
-    dataloader_iter = iter(dataloader)
-    loss_and_grad = eqx.filter_value_and_grad(loss_fn)
+    loss_and_grad = eqx.filter_value_and_grad(
+        lambda current_model, batch: loss_fn(current_model, batch)
+    )
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
+    batches = _batch_iterator(dataloader)
 
     @eqx.filter_jit
     def step(model, opt_state, batch):
@@ -175,7 +176,7 @@ def train_model(
         return model, opt_state, loss
 
     for _ in range(num_steps):
-        batch = next(dataloader_iter)
+        batch = next(batches)
         model, opt_state, loss = step(model, opt_state, batch)
         history.append(float(loss))
     return model, history

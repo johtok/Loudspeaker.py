@@ -1,6 +1,6 @@
 [project]
 authors = [{name = "Johannes Nørskov Toke", email = "johannestoke@gmail.com"}]
-dependencies = ["colorednoise>=2.2.0,<3"]
+dependencies = ["colorednoise>=2.2.0,<3", "chex>=0.1.86", "hypothesis>=6.0", "pytest-benchmark>=4.0"]
 name = "loudspeaker"
 requires-python = ">= 3.11"
 version = "0.1.0"
@@ -33,6 +33,11 @@ equinox = ">=0.10.0"
 
 # Optimization
 optax = ">=0.1.0"
+
+# Testing
+hypothesis = "*"
+chex = "*"
+pytest-benchmark = "*"
 
 # Visualization and plotting
 matplotlib = "*"
@@ -78,11 +83,11 @@ init-kernel = "python -m ipykernel install --user --name=loudspeaker-py --displa
 # Development setup
 dev-setup = "pre-commit install && python -m pip install -e ."
 
-# Run tests
-test = "pytest"
-
-# Run tests with coverage
-test-cov = "pytest --cov=src --cov-report=term-missing --cov-report=html"
+# Core test targets
+test = "pytest tests/test_loudspeaker"
+test-all = "pytest tests/test_loudspeaker tests/benchmarks"
+test-cov = "pytest --cov=src --cov-report=term-missing --cov-report=html tests/test_loudspeaker"
+bench = "pytest tests/benchmarks --benchmark-only"
 
 # Format code
 format = "black src tests scripts && isort src tests scripts"
@@ -104,3 +109,6 @@ install-dev = "python -m pip install -e ."
 
 # Uninstall package
 uninstall = "python -m pip uninstall -y loudspeaker"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/test_loudspeaker"]
