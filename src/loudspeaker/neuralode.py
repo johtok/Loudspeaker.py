@@ -72,6 +72,7 @@ def solve_with_model(
     return sol.ys
 
 
+@eqx.filter_jit
 def norm_loss_fn(pred: jnp.ndarray, target: jnp.ndarray, eps: float = 1e-8) -> jnp.ndarray:
     target_mean = jnp.mean(target, axis=0, keepdims=True)
     target_std = jnp.std(target, axis=0, keepdims=True) + eps

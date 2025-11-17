@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Tuple
-
 import jax.numpy as jnp
+from jax import tree_util
 from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
 
 from .testsignals import ControlSignal
@@ -41,6 +40,7 @@ class MSDConfig:
         return 2 * self.damping_ratio * self.mass * self._omega
 
 
+@tree_util.register_pytree_node_class
 @dataclass(frozen=True)
 class SimulationResult:
     ts: jnp.ndarray
@@ -50,6 +50,15 @@ class SimulationResult:
 
     def has_details(self) -> bool:
         return self.forces is not None and self.acceleration is not None
+
+    def tree_flatten(self):
+        children = (self.ts, self.states, self.forces, self.acceleration)
+        return children, None
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        ts, states, forces, acceleration = children
+        return cls(ts=ts, states=states, forces=forces, acceleration=acceleration)
 
 
 def _build_vector_field(config: MSDConfig, forcing: ControlSignal):
