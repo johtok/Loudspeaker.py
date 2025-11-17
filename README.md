@@ -12,6 +12,10 @@ A comprehensive Python framework for testing Controlled Functional Expansion Sys
 - **Comprehensive Testing**: Extensive test suite for all components
 - **CLI Interface**: Command-line tools for training, evaluation, and data generation
 
+## 🎯 Project Direction: Type-Based Functional Training
+
+Loudspeaker.py is evolving toward a fully *type-driven, functional training system*. Core components such as datasets, dataloaders, loss builders, and neural ODE wrappers are now exposed as strongly typed dataclasses and pure functions. Training flows (e.g., `NeuralODE`) pass immutable configs and interchangeable callables rather than relying on implicit globals. This design lets you compose experiments declaratively, swap solvers or forcing generators safely, and leverage static type checkers to validate end-to-end pipelines. Expect future modules to follow the same typed-functional contract so that experiments, scripts, and notebooks can share a single, consistent API surface.
+
 ## 📋 Table of Contents
 
 - [Installation](#installation)
