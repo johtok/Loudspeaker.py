@@ -102,8 +102,12 @@ def build_loss_fn(
             f"Unknown loss_type '{loss_type}'. Expected 'mse' or 'norm'/'norm_mse'."
         )
 
-    def _solve(model: LinearMSDModel, control: ControlSignal) -> jnp.ndarray:
-        return solve_with_model(model, ts, control, initial_state, dt)
+    def _solve(
+        model: LinearMSDModel,
+        time_grid: jnp.ndarray,
+        control: ControlSignal,
+    ) -> jnp.ndarray:
+        return solve_with_model(model, time_grid, control, initial_state, dt)
 
     def loss_fn(
         model: LinearMSDModel,
@@ -113,7 +117,7 @@ def build_loss_fn(
             if default_data is None:
                 raise ValueError("loss_fn requires batch data when no defaults are set.")
             control, target = default_data
-            prediction = _solve(model, control)
+            prediction = _solve(model, ts, control)
             return _loss(prediction, target)
 
         batch_forcing, batch_reference = batch
@@ -122,9 +126,11 @@ def build_loss_fn(
             batch_reference = batch_reference[None, ...]
 
         def sample_loss(forcing_values, target_values):
-            control = build_control_signal(ts, forcing_values)
-            prediction = _solve(model, control)
-            return _loss(prediction, target_values)
+            length = forcing_values.shape[0]
+            time_grid = ts[:length]
+            control = build_control_signal(time_grid, forcing_values)
+            prediction = _solve(model, time_grid, control)
+            return _loss(prediction, target_values[:length])
 
         losses = jax.vmap(sample_loss)(batch_forcing, batch_reference)
         return jnp.mean(losses)
