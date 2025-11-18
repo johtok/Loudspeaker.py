@@ -21,7 +21,13 @@ from loudspeaker.data import StaticTrainingStrategy, build_msd_dataset, msd_data
 from loudspeaker.metrics import mse
 from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.models import LinearMSDModel
-from loudspeaker.neuralode import NeuralODE, build_loss_fn, predict_neural_ode, train_neural_ode
+from loudspeaker.neuralode import (
+    NeuralODE,
+    build_loss_fn,
+    plot_neural_ode_predictions,
+    predict_neural_ode,
+    train_neural_ode,
+)
 
 
 jax.config.update("jax_enable_x64", True)
@@ -98,6 +104,14 @@ def main(
     if test_size > 0:
         test_predictions, test_targets = predict_neural_ode(trained, _evaluation_batches(test_forcing, test_reference))
         print("Exp5 Test MSE:", float(mse(test_predictions, test_targets)))
+        plot_neural_ode_predictions(
+            trained,
+            _evaluation_batches(test_forcing, test_reference),
+            max_batches=1,
+            title="Exp5 Test Predictions",
+            target_labels=("position", "velocity"),
+            prediction_labels=("pred position", "pred velocity"),
+        )
 
     base_model = LinearMSDModel(config=config)
     param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))

@@ -57,6 +57,7 @@ class NeuralODE:
 
 
 def solve_with_model(
+    model: _LinearModel,
     ts: jnp.ndarray,
     forcing: ControlSignal,
     initial_state: jnp.ndarray,
