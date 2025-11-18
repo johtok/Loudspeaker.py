@@ -11,6 +11,7 @@ A comprehensive Python framework for testing Controlled Functional Expansion Sys
 - **TensorBoard Logging**: Comprehensive experiment tracking and visualization
 - **Comprehensive Testing**: Extensive test suite for all components
 - **CLI Interface**: Command-line tools for training, evaluation, and data generation
+- **Scale-Aware Losses**: Normalized MSE (`norm_mse`) is the default loss for examples, keeping optimization stable across targets
 
 ## 🎯 Project Direction: Type-Based Functional Training
 
@@ -289,6 +290,12 @@ plot_spiral_predictions(model, config)
 plot_pytorch_training_history(results)
 visualize_spiral_predictions_pytorch(model, config)
 ```
+
+### Losses and Metrics
+
+- `build_loss_fn` now defaults to `loss_type="norm_mse"`, which computes a normalized MSE by squaring the normalized RMSE (`nrmse`). This keeps losses dimensionless and makes experiments consistent regardless of signal scale.
+- To revert to raw mean squared error, pass `loss_type="mse"` when constructing the loss function or when calling convenience scripts (for example, `main(loss="mse")` in the experiment drivers).
+- The metric helpers exposed via `loudspeaker.metrics` include `mse`, `mae`, `nrmse`, and the new `norm_mse`, so you can reuse the same normalization logic for evaluation.
 
 ## 🧪 Development
 

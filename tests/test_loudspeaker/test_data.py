@@ -5,8 +5,18 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 
-from loudspeaker.data import MSDDataset, StaticTrainingStrategy, build_msd_dataset, msd_dataloader
+from loudspeaker.data import (
+    MSDDataset,
+    StaticTrainingStrategy,
+    build_msd_dataset,
+    build_loudspeaker_dataset,
+    StrategyPhase,
+    TrainingStrategy,
+    _phase_length,
+    msd_dataloader,
+)
 from loudspeaker.msd_sim import MSDConfig
+from loudspeaker.loudspeaker_sim import LoudspeakerConfig
 from loudspeaker.testsignals import build_control_signal
 
 
@@ -63,6 +73,38 @@ def test_build_msd_dataset_accepts_custom_forcing_fn():
     assert bool(jnp.all(dataset.forcing == 2.0))
 
 
+def test_build_loudspeaker_dataset_matches_config(monkeypatch):
+    monkeypatch.setattr("loudspeaker.data.pink_noise_control", _constant_control)
+    config = LoudspeakerConfig(num_samples=8)
+    ts, forcing, states = build_loudspeaker_dataset(
+        config,
+        dataset_size=3,
+        key=jr.PRNGKey(0),
+    )
+    expected_ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    chex.assert_trees_all_close(ts, expected_ts)
+    chex.assert_shape(forcing, (3, config.num_samples))
+    chex.assert_shape(states, (3, config.num_samples, 3))
+
+
+def test_build_loudspeaker_dataset_validates_size():
+    config = LoudspeakerConfig()
+    with pytest.raises(ValueError):
+        build_loudspeaker_dataset(config, dataset_size=0, key=jr.PRNGKey(0))
+
+
+def test_build_loudspeaker_dataset_accepts_custom_forcing():
+    config = LoudspeakerConfig(num_samples=10)
+    _, forcing, _ = build_loudspeaker_dataset(
+        config,
+        dataset_size=1,
+        key=jr.PRNGKey(0),
+        forcing_fn=_scaled_control,
+        forcing_kwargs={"scale": 3.0},
+    )
+    chex.assert_trees_all_close(forcing, jnp.ones_like(forcing) * 3.0)
+
+
 def test_msd_dataloader_without_strategy_emits_batches():
     num_samples = 5
     dataset_size = 3
@@ -111,3 +153,36 @@ def test_msd_dataloader_validates_inputs():
                 key=jr.PRNGKey(0),
             )
         )
+
+
+def test_msd_dataloader_rejects_large_batches():
+    forcing = jnp.zeros((2, 3))
+    reference = jnp.zeros((2, 3, 2))
+    loader = msd_dataloader
+    with pytest.raises(ValueError):
+        next(loader(forcing, reference, batch_size=3, key=jr.PRNGKey(0)))
+
+
+def test_strategy_phase_validates_inputs():
+    with pytest.raises(ValueError):
+        StrategyPhase(steps=0, length_fraction=0.5)
+    with pytest.raises(ValueError):
+        StrategyPhase(steps=1, length_fraction=0.0)
+
+
+def test_training_strategy_iteration_and_total_steps():
+    phases = (StrategyPhase(steps=2, length_fraction=0.5), StrategyPhase(steps=1, length_fraction=1.0))
+    strategy = TrainingStrategy(phases)
+    assert tuple(strategy) == phases
+    assert strategy.total_steps == 3
+
+
+def test_training_strategy_requires_phase():
+    with pytest.raises(ValueError):
+        TrainingStrategy(())
+
+
+def test_static_training_strategy_uses_minimum_length():
+    strategy = StaticTrainingStrategy(steps=1, length_fraction=0.01)
+    # _phase_length enforces two samples minimum.
+    assert _phase_length(num_samples=10, fraction=strategy.phases[0].length_fraction) == 2

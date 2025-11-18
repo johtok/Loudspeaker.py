@@ -23,6 +23,28 @@ class LoudspeakerConfig:
         default_factory=lambda: jnp.array([0.0, 0.0, 0.0], dtype=jnp.float32)
     )
 
+    def __post_init__(self: "LoudspeakerConfig") -> None:
+        if self.moving_mass <= 0.0:
+            raise ValueError("moving_mass must be positive.")
+        if self.compliance <= 0.0:
+            raise ValueError("compliance must be positive.")
+        if self.damping < 0.0:
+            raise ValueError("damping cannot be negative.")
+        if self.motor_force <= 0.0:
+            raise ValueError("motor_force must be positive.")
+        if self.voice_coil_resistance <= 0.0:
+            raise ValueError("voice_coil_resistance must be positive.")
+        if self.voice_coil_inductance <= 0.0:
+            raise ValueError("voice_coil_inductance must be positive.")
+        if self.sample_rate <= 0.0:
+            raise ValueError("sample_rate must be positive.")
+        if self.num_samples < 2:
+            raise ValueError("num_samples must be at least 2.")
+        init = jnp.asarray(self.initial_state, dtype=jnp.float32)
+        if init.shape != (3,):
+            raise ValueError("initial_state must have shape (3,).")
+        object.__setattr__(self, "initial_state", init)
+
     @property
     def stiffness(self: "LoudspeakerConfig") -> float:
         return 1.0 / self.compliance
@@ -34,6 +56,28 @@ class LoudspeakerConfig:
     @property
     def duration(self: "LoudspeakerConfig") -> float:
         return float(self.num_samples - 1) * self.dt
+
+
+@dataclass(frozen=True)
+class NonlinearLoudspeakerConfig(LoudspeakerConfig):
+    """Configuration for loudspeaker models with state-dependent parameters."""
+
+    suspension_cubic: float = 0.0
+    force_factor_sag: float = 0.0
+
+    def __post_init__(self: "NonlinearLoudspeakerConfig") -> None:
+        super().__post_init__()
+        if self.suspension_cubic < 0.0:
+            raise ValueError("suspension_cubic cannot be negative.")
+        if self.force_factor_sag < 0.0:
+            raise ValueError("force_factor_sag cannot be negative.")
+
+    def suspension_gain(self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray) -> jnp.ndarray:
+        return 1.0 + self.suspension_cubic * (displacement**2)
+
+    def bl_factor(self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray) -> jnp.ndarray:
+        base = 1.0 - self.force_factor_sag * (displacement**2)
+        return self.motor_force * jnp.clip(base, min=0.0)
 
 
 @dataclass(frozen=True)
@@ -75,6 +119,30 @@ def _build_vector_field(
     return vf
 
 
+def _build_nonlinear_vector_field(
+    config: NonlinearLoudspeakerConfig,
+    forcing: ControlSignal,
+):
+    inv_mass = 1.0 / config.moving_mass
+    inv_inductance = 1.0 / config.voice_coil_inductance
+
+    def vf(t: float, state: jnp.ndarray, args: Any) -> jnp.ndarray:
+        pos, vel, current = state
+        voltage = forcing.evaluate(t)
+        stiffness_term = config.stiffness * config.suspension_gain(pos) * pos
+        bl = config.bl_factor(pos)
+        coil_force = bl * current
+        acceleration = (coil_force - config.damping * vel - stiffness_term) * inv_mass
+        current_rate = (
+            voltage
+            - config.voice_coil_resistance * current
+            - bl * vel
+        ) * inv_inductance
+        return jnp.array([vel, acceleration, current_rate], dtype=jnp.float32)
+
+    return vf
+
+
 def simulate_loudspeaker_system(
     config: LoudspeakerConfig,
     forcing: ControlSignal,
@@ -106,6 +174,47 @@ def simulate_loudspeaker_system(
     if capture_details:
         voltages = forcing.evaluate_batch(sol.ts)
         coil_force = config.motor_force * sol.ys[:, 2]
+
+    return LoudspeakerSimulationResult(
+        ts=sol.ts,
+        states=sol.ys,
+        voltages=voltages,
+        coil_force=coil_force,
+    )
+
+
+def simulate_nonlinear_loudspeaker_system(
+    config: NonlinearLoudspeakerConfig,
+    forcing: ControlSignal,
+    solver: Tsit5 | None = None,
+    ts: jnp.ndarray | None = None,
+    capture_details: bool = False,
+) -> LoudspeakerSimulationResult:
+    """Simulate the loudspeaker with nonlinear suspension or motor force."""
+
+    solver = solver or Tsit5()
+    if ts is None:
+        ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    else:
+        ts = jnp.asarray(ts, dtype=jnp.float32)
+
+    term = ODETerm(_build_nonlinear_vector_field(config, forcing))
+    sol = diffeqsolve(
+        term,
+        solver,
+        t0=ts[0],
+        t1=ts[-1],
+        dt0=config.dt,
+        y0=config.initial_state,
+        saveat=SaveAt(ts=ts),
+    )
+
+    voltages = None
+    coil_force = None
+    if capture_details:
+        voltages = forcing.evaluate_batch(sol.ts)
+        bl_values = config.bl_factor(sol.ys[:, 0])
+        coil_force = bl_values * sol.ys[:, 2]
 
     return LoudspeakerSimulationResult(
         ts=sol.ts,

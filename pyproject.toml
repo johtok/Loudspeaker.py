@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/loudspeaker", "src/models"]
+packages = ["src/loudspeaker"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -91,6 +91,7 @@ test-cov = "pytest --cov=src --cov-report=term-missing --cov-report=html tests/t
 bench = "pytest tests/benchmarks --benchmark-only"
 bench-profiler = "python scripts/benchmarks/optimize_tolerances.py --trials=25"
 benchmark = "pytest tests/benchmarks/test_performance.py --benchmark-only"
+run-experiments = "python scripts/run_all_experiments.py"
 
 # Format code
 format = "black src tests scripts && isort src tests scripts"

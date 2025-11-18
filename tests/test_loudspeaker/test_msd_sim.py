@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import chex
 import jax.numpy as jnp
+import pytest
 
 from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
 from loudspeaker.testsignals import build_control_signal, complex_tone_control
@@ -85,3 +86,38 @@ def test_simulation_obeys_newtonian_dynamics():
         atol=5e-2,
         rtol=5e-2,
     )
+
+
+def test_simulation_result_tree_roundtrip():
+    config = MSDConfig(num_samples=4)
+    control = _zero_control(config)
+    result = simulate_msd_system(config, control, capture_details=True)
+    leaves, _ = result.tree_flatten()
+    rebuilt = result.tree_unflatten(None, leaves)
+    for original, new in zip((result.ts, result.states, result.forces, result.acceleration), (rebuilt.ts, rebuilt.states, rebuilt.forces, rebuilt.acceleration)):
+        if original is None:
+            assert new is None
+        else:
+            chex.assert_trees_all_close(original, new)
+
+
+def test_simulation_result_has_details_flag():
+    config = MSDConfig()
+    control = _zero_control(config)
+    result = simulate_msd_system(config, control)
+    assert not result.has_details()
+
+
+def test_msd_config_validates_parameters():
+    with pytest.raises(ValueError):
+        MSDConfig(mass=0.0)
+    with pytest.raises(ValueError):
+        MSDConfig(num_samples=1)
+    with pytest.raises(ValueError):
+        MSDConfig(initial_state=jnp.zeros(3))
+    with pytest.raises(ValueError):
+        MSDConfig(natural_frequency=0.0)
+    with pytest.raises(ValueError):
+        MSDConfig(damping_ratio=-0.1)
+    with pytest.raises(ValueError):
+        MSDConfig(sample_rate=0.0)

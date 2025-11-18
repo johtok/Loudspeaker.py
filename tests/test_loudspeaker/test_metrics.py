@@ -6,7 +6,7 @@ import numpy as np
 from hypothesis import given, strategies as st
 from hypothesis.extra import numpy as hnp
 
-from loudspeaker.metrics import mae, mse
+from loudspeaker.metrics import mae, mse, norm_mse, nrmse
 
 
 def _paired_arrays():
@@ -53,3 +53,19 @@ def test_mae_matches_numpy(arrays):
         atol=1e-6,
         rtol=1e-6,
     )
+
+
+def test_nrmse_matches_manual_computation():
+    target = jnp.array([0.0, 1.0, 2.0], dtype=jnp.float32)
+    pred = target + jnp.array([0.5, -0.5, 1.0], dtype=jnp.float32)
+    sigma = jnp.ones_like(target) * 0.5
+    manual = np.sqrt(np.mean(((np.asarray(pred) - np.asarray(target)) / 0.5) ** 2))
+    chex.assert_trees_all_close(nrmse(pred, target, sigma), jnp.float32(manual))
+
+
+def test_norm_mse_matches_squared_nrmse():
+    target = jnp.array([[0.0, 1.0], [2.0, 3.0]], dtype=jnp.float32)
+    pred = target + 0.25
+    normalizer = jnp.std(target, axis=0, keepdims=True) + 1e-8
+    expected = nrmse(pred, target, normalizer) ** 2
+    chex.assert_trees_all_close(norm_mse(pred, target), expected)

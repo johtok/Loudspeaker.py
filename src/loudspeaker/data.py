@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import jax.random as jr
 
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
+from .loudspeaker_sim import LoudspeakerConfig, simulate_loudspeaker_system
 from .testsignals import ControlSignal, pink_noise_control
 
 
@@ -64,6 +65,44 @@ def build_msd_dataset(
         forcing=jnp.stack(forcing_values),
         reference=jnp.stack(reference_states),
     )
+
+
+def build_loudspeaker_dataset(
+    config: LoudspeakerConfig,
+    dataset_size: int,
+    key: jr.PRNGKey,
+    band: Tuple[float, float] | None = (20.0, 1000.0),
+    *,
+    forcing_fn: ForcingFactory | None = None,
+    forcing_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Generate supervised data for loudspeaker identification experiments."""
+
+    if dataset_size < 1:
+        raise ValueError("dataset_size must be positive.")
+
+    forcing_fn = forcing_fn or pink_noise_control
+    kwargs = dict(forcing_kwargs or {})
+    if band is not None and "band" not in kwargs:
+        kwargs["band"] = band
+
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    forcing_values: list[jnp.ndarray] = []
+    reference_states: list[jnp.ndarray] = []
+    rng = key
+    for _ in range(dataset_size):
+        rng, forcing_key = jr.split(rng)
+        control = forcing_fn(
+            num_samples=config.num_samples,
+            dt=config.dt,
+            key=forcing_key,
+            **kwargs,
+        )
+        sim_result = simulate_loudspeaker_system(config, control)
+        forcing_values.append(control.values)
+        reference_states.append(sim_result.states)
+
+    return ts, jnp.stack(forcing_values), jnp.stack(reference_states)
 
 
 @dataclass(frozen=True)

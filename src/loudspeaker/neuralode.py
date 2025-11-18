@@ -12,7 +12,7 @@ import optax
 from diffrax import ODETerm, PIDController, SaveAt, Tsit5, diffeqsolve
 
 from .loudspeaker_sim import LoudspeakerConfig
-from .metrics import mse
+from .metrics import mse, norm_mse
 from .models import (
     LinearLoudspeakerModel,
     LinearMSDModel,
@@ -102,18 +102,16 @@ def solve_with_model(
 
 @eqx.filter_jit
 def norm_loss_fn(pred: jnp.ndarray, target: jnp.ndarray, eps: float = 1e-8) -> jnp.ndarray:
-    target_mean = jnp.mean(target, axis=0, keepdims=True)
-    target_std = jnp.std(target, axis=0, keepdims=True) + eps
-    pred_norm = (pred - target_mean) / target_std
-    target_norm = (target - target_mean) / target_std
-    return mse(pred_norm, target_norm) / pred.shape[0]
+    """Alias retained for backward compatibility; uses metric.norm_mse."""
+
+    return norm_mse(pred, target, eps=eps)
 
 
 def build_loss_fn(
     ts: jnp.ndarray,
     initial_state: jnp.ndarray,
     dt: float,
-    loss_type: str = "mse",
+    loss_type: str = "norm_mse",
     forcing: ControlSignal | None = None,
     reference: jnp.ndarray | None = None,
     *,

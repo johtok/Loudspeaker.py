@@ -3,19 +3,34 @@ from .data import (
     StaticTrainingStrategy,
     TrainingStrategy,
     build_msd_dataset,
+    build_loudspeaker_dataset,
     msd_dataloader,
 )
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
+from .nonlinear_msd import (
+    NonlinearMSDConfig,
+    NonlinearMSDSimConfig,
+    build_nonlinear_msd_training_data,
+    nonlinear_msd_derivative,
+    nonlinear_msd_matrix,
+    simulate_nonlinear_msd_system,
+)
 from .loudspeaker_sim import (
     LoudspeakerConfig,
     LoudspeakerSimulationResult,
+    NonlinearLoudspeakerConfig,
     simulate_loudspeaker_system,
+    simulate_nonlinear_loudspeaker_system,
+)
+from .models import (
+    AugmentedMSDModel,
+    LinearLoudspeakerModel,
+    LinearMSDModel,
+    LoudspeakerSimulationModel,
+    ReservoirMSDModel,
 )
 from .neuralode import (
     NeuralODE,
-    LinearLoudspeakerModel,
-    LinearMSDModel,
-    AugmentedMSDModel,
     build_loss_fn,
     norm_loss_fn,
     plot_neural_ode_loss,
@@ -33,8 +48,11 @@ from .plotting import (
     plot_timeseries_bundle,
     plot_residuals,
     plot_trajectory,
+    save_figure,
 )
-from .metrics import mae, mse
+from .plot_labels import LabelSpec, normalized_labels, raw_labels
+from .io import save_npz_bundle
+from .metrics import mae, mse, norm_mse, nrmse
 from .testsignals import (
     ControlSignal,
     complex_tone_control,
@@ -46,14 +64,25 @@ __all__ = [
     "TrainingStrategy",
     "MSDDataset",
     "build_msd_dataset",
+    "build_loudspeaker_dataset",
     "msd_dataloader",
     "MSDConfig",
     "SimulationResult",
     "simulate_msd_system",
+    "NonlinearMSDConfig",
+    "NonlinearMSDSimConfig",
+    "build_nonlinear_msd_training_data",
+    "nonlinear_msd_derivative",
+    "nonlinear_msd_matrix",
+    "simulate_nonlinear_msd_system",
     "LoudspeakerSimulationResult",
+    "NonlinearLoudspeakerConfig",
     "simulate_loudspeaker_system",
+    "simulate_nonlinear_loudspeaker_system",
+    "AugmentedMSDModel",
     "LinearMSDModel",
     "LinearLoudspeakerModel",
+    "LoudspeakerSimulationModel",
     "ReservoirMSDModel",
     "LoudspeakerConfig",
     "NeuralODE",
@@ -72,8 +101,15 @@ __all__ = [
     "plot_timeseries_bundle",
     "plot_residuals",
     "plot_trajectory",
+    "save_figure",
+    "LabelSpec",
+    "raw_labels",
+    "normalized_labels",
+    "save_npz_bundle",
     "mae",
     "mse",
+    "norm_mse",
+    "nrmse",
     "ControlSignal",
     "complex_tone_control",
     "pink_noise_control",

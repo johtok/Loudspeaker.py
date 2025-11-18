@@ -21,6 +21,22 @@ class MSDConfig:
         default_factory=lambda: jnp.array([0.0, 0.0], dtype=jnp.float32)
     )
 
+    def __post_init__(self: "MSDConfig") -> None:
+        if self.mass <= 0.0:
+            raise ValueError("mass must be positive.")
+        if self.natural_frequency <= 0.0:
+            raise ValueError("natural_frequency must be positive.")
+        if self.damping_ratio < 0.0:
+            raise ValueError("damping_ratio cannot be negative.")
+        if self.sample_rate <= 0.0:
+            raise ValueError("sample_rate must be positive.")
+        if self.num_samples < 2:
+            raise ValueError("num_samples must be at least 2.")
+        init = jnp.asarray(self.initial_state, dtype=jnp.float32)
+        if init.shape != (2,):
+            raise ValueError("initial_state must have shape (2,).")
+        object.__setattr__(self, "initial_state", init)
+
     @property
     def dt(self: "MSDConfig") -> float:
         return 1.0 / self.sample_rate

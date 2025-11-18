@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Iterable, Sequence
+from pathlib import Path
 
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -214,3 +216,30 @@ def plot_timeseries_bundle(
     ax.grid(True, alpha=0.3)
     ax.legend()
     return ax
+
+
+def save_figure(
+    ax: Axes | np.ndarray | Figure,
+    path: str | Path,
+    *,
+    dpi: int = 300,
+    bbox_inches: str = "tight",
+    close: bool = True,
+) -> None:
+    """Persist matplotlib content regardless of axes layout."""
+
+    if isinstance(ax, np.ndarray):
+        first = ax.ravel()[0]
+        fig = first.figure
+    elif isinstance(ax, Figure):
+        fig = ax
+    elif isinstance(ax, Axes):
+        fig = ax.figure
+    else:
+        raise TypeError(f"Unsupported object type for save_figure: {type(ax)}")
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
+    if close:
+        plt.close(fig)
