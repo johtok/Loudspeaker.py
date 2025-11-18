@@ -2,6 +2,7 @@
 """Exp4 loudspeaker neural ODE training using shared libs."""
 
 #%%
+import csv
 import os
 import sys
 from typing import Iterable, Tuple
@@ -9,10 +10,13 @@ from typing import Iterable, Tuple
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import matplotlib.pyplot as plt
+import numpy as np
 import optax
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+OUT_DIR = os.path.join(ROOT_DIR, "out", "exp4_loudspeaker_sim")
 for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
@@ -37,6 +41,17 @@ jax.config.update("jax_enable_x64", True)
 
 
 Batch = Tuple[jnp.ndarray, jnp.ndarray]
+
+
+def _save_fig(ax, folder: str, filename: str) -> None:
+    if isinstance(ax, np.ndarray):
+        fig = ax.ravel()[0].figure
+    else:
+        fig = ax.figure
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, filename)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 def _evaluation_batches(forcing: jnp.ndarray, reference: jnp.ndarray) -> list[Batch]:
@@ -144,15 +159,23 @@ def main(
     )
 
     trained = train_neural_ode(neural_ode, dataloader())
+    plot_dir = os.path.join(
+        OUT_DIR,
+        f"exp4_{optimizer_factory.__name__}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}",
+    )
+    os.makedirs(plot_dir, exist_ok=True)
 
     eval_batch = (test_forcing[:1], test_reference[:1])
     predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
     eval_prediction = predictions[0]
     eval_reference = targets[0]
 
-    print("Final MAE:", float(mae(eval_prediction, eval_reference)))
-    print("Final MSE:", float(mse(eval_prediction, eval_reference)))
+    final_mae = float(mae(eval_prediction, eval_reference))
+    final_mse = float(mse(eval_prediction, eval_reference))
+    print("Final MAE:", final_mae)
+    print("Final MSE:", final_mse)
 
+    test_mse = None
     if test_size > 0:
         test_loader = iter(_evaluation_batches(test_forcing, test_reference))
         test_predictions, test_targets = predict_neural_ode(trained, test_loader)
@@ -163,7 +186,7 @@ def main(
     param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
     print("State matrix parameter MSE:", param_mse)
 
-    plot_neural_ode_predictions(
+    traj_ax, resid_ax = plot_neural_ode_predictions(
         trained,
         _single_batch_loader(eval_batch),
         max_batches=1,
@@ -184,7 +207,19 @@ def main(
             "coil current residual",
         ),
     )
-    plot_neural_ode_loss(trained)
+    _save_fig(traj_ax, plot_dir, "training_predictions.png")
+    _save_fig(resid_ax, plot_dir, "training_residuals.png")
+    loss_ax = plot_neural_ode_loss(trained)
+    _save_fig(loss_ax, plot_dir, "training_loss.png")
+
+    csv_path = os.path.join(plot_dir, "metrics.csv")
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["metric", "value"])
+        writer.writerow(["final_mae", final_mae])
+        writer.writerow(["final_mse", final_mse])
+        if test_mse is not None:
+            writer.writerow(["test_mse", test_mse])
 
 # %%
 

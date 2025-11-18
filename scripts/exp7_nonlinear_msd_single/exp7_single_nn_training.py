@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Exp6: Nonlinear MSD identification using ensemble neural networks."""
+"""Exp7: Nonlinear MSD identification using a single neural network vector field."""
 
 #%%
 import os
 import sys
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Tuple
+from typing import Iterator, Tuple
 
 import csv
 import equinox as eqx
@@ -18,13 +18,13 @@ import optax
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
-OUT_DIR = os.path.join(ROOT_DIR, "out", "exp6_nonlinear_msd")
+OUT_DIR = os.path.join(ROOT_DIR, "out", "exp7_nonlinear_msd_single")
 for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
 
 from loudspeaker.metrics import mse
-from loudspeaker.plotting import plot_phase_fan, plot_timeseries_bundle, plot_loss
+from loudspeaker.plotting import plot_timeseries_bundle, plot_loss
 
 
 jax.config.update("jax_enable_x64", True)
@@ -67,56 +67,32 @@ def _true_derivative(config: NonlinearMSDConfig, state: jnp.ndarray, control: jn
     return jnp.array([vel, acc])
 
 
-def _true_matrix(config: NonlinearMSDConfig, state: jnp.ndarray) -> jnp.ndarray:
-    pos, _ = state
-    return jnp.array(
-        [
-            [0.0, 1.0, 0.0],
-            [
-                (-config.stiffness - config.cubic * pos**2) / config.mass,
-                -config.damping / config.mass,
-                1.0 / config.mass,
-            ],
-        ]
-    )
-
-
-def build_training_data(config: NonlinearMSDConfig, key: jr.PRNGKey) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+def build_training_data(config: NonlinearMSDConfig, key: jr.PRNGKey) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     if config.dataset_size < 2:
         raise ValueError("dataset_size must be at least 2.")
     key, state_key, control_key = jr.split(key, 3)
     states = config.state_scale * jr.normal(state_key, (config.dataset_size, 2))
     controls = config.control_scale * jr.normal(control_key, (config.dataset_size, 1))
     derivatives = jax.vmap(lambda s, u: _true_derivative(config, s, u))(states, controls)
-    matrices = jax.vmap(lambda s: _true_matrix(config, s))(states)
-    return states, controls, derivatives, matrices
+    return states, controls, derivatives
 
 
-class _MiniMLP(eqx.Module):
+class SingleNN(eqx.Module):
     layer1: eqx.nn.Linear
     layer2: eqx.nn.Linear
     layer3: eqx.nn.Linear
 
-    def __init__(self, in_size: int, key: jr.PRNGKey):
+    def __init__(self, key: jr.PRNGKey):
         k1, k2, k3 = jr.split(key, 3)
-        self.layer1 = eqx.nn.Linear(in_size, 10, key=k1)
-        self.layer2 = eqx.nn.Linear(10, 10, key=k2)
-        self.layer3 = eqx.nn.Linear(10, 1, key=k3)
+        self.layer1 = eqx.nn.Linear(3, 50, key=k1)
+        self.layer2 = eqx.nn.Linear(50, 50, key=k2)
+        self.layer3 = eqx.nn.Linear(50, 2, key=k3)
 
-    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, state: jnp.ndarray, control: jnp.ndarray) -> jnp.ndarray:
+        inputs = jnp.concatenate([state, control], axis=-1)
         x = jnp.tanh(self.layer1(inputs))
         x = jnp.tanh(self.layer2(x))
         return self.layer3(x)
-
-
-class EnsembleMSD(eqx.Module):
-    nets: tuple[_MiniMLP, ...]
-    rows: int
-    cols: int
-
-    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
-        outputs = jnp.stack([net(inputs).squeeze(-1) for net in self.nets])
-        return outputs.reshape(self.rows, self.cols)
 
 
 def make_dataloader(
@@ -145,11 +121,11 @@ def main(
     optimizer_factory=optax.adam,
     config: NonlinearMSDConfig = NonlinearMSDConfig(),
     batch_size: int = 128,
-    num_steps: int = 1000,
+    num_steps: int = 1500,
     train_fraction: float = 0.8,
 ):
-    key = jr.PRNGKey(6)
-    states, controls, derivatives, matrices = build_training_data(config, key)
+    key = jr.PRNGKey(7)
+    states, controls, derivatives = build_training_data(config, key)
 
     train_size = max(1, int(train_fraction * config.dataset_size))
     if train_size >= config.dataset_size:
@@ -159,45 +135,34 @@ def main(
     train_states, test_states = states[:train_size], states[train_size:]
     train_controls, test_controls = controls[:train_size], controls[train_size:]
     train_derivs, test_derivs = derivatives[:train_size], derivatives[train_size:]
-    test_matrices = matrices[train_size:]
 
     loader = make_dataloader(
         train_states,
         train_controls,
         train_derivs,
         batch_size=batch_size,
-        key=jr.PRNGKey(99),
+        key=jr.PRNGKey(101),
     )
 
-    train_mean = jnp.mean(train_derivs, axis=0, keepdims=True)
-    train_std = jnp.std(train_derivs, axis=0, keepdims=True) + 1e-8
-
-    net_keys = jr.split(jr.PRNGKey(123), 6)
-    nets = tuple(_MiniMLP(3, key=k) for k in net_keys)
-    model = EnsembleMSD(nets=nets, rows=2, cols=3)
-
-    optimizer = optimizer_factory(learning_rate=3e-3)
+    model = SingleNN(key=jr.PRNGKey(55))
+    optimizer = optimizer_factory(learning_rate=1e-3)
     params = eqx.filter(model, eqx.is_array)
     opt_state = optimizer.init(params)
 
-    def loss_fn(current_model: EnsembleMSD, batch: Batch) -> jnp.ndarray:
+    def loss_fn(current_model: SingleNN, batch: Batch) -> jnp.ndarray:
         batch_states, batch_controls, batch_derivs = batch
-        inputs = jnp.concatenate([batch_states, batch_controls], axis=1)
-        matrices_pred = jax.vmap(current_model)(inputs)
-        preds = jnp.einsum("bij,bj->bi", matrices_pred, inputs)
-        preds_norm = (preds - train_mean) / train_std
-        targets_norm = (batch_derivs - train_mean) / train_std
-        return mse(preds_norm, targets_norm)
+        preds = jax.vmap(current_model)(batch_states, batch_controls)
+        return mse(preds, batch_derivs)
 
     loss_grad = eqx.filter_value_and_grad(loss_fn)
 
     @eqx.filter_jit
     def step(
-        current_model: EnsembleMSD,
+        current_model: SingleNN,
         current_opt_state: optax.OptState,
         batch: Batch,
-    ) -> tuple[EnsembleMSD, optax.OptState, jnp.ndarray]:
-        (loss_val, grads) = loss_grad(current_model, batch)
+    ) -> tuple[SingleNN, optax.OptState, jnp.ndarray]:
+        loss_val, grads = loss_grad(current_model, batch)
         updates, new_state = optimizer.update(grads, current_opt_state, eqx.filter(current_model, eqx.is_array))
         new_model = eqx.apply_updates(current_model, updates)
         return new_model, new_state, loss_val
@@ -208,44 +173,38 @@ def main(
         model, opt_state, loss_value = step(model, opt_state, batch)
         history.append(float(loss_value))
 
-    def evaluate(current_model: EnsembleMSD):
-        inputs = jnp.concatenate([test_states, test_controls], axis=1)
-        matrices_pred = jax.vmap(current_model)(inputs)
-        preds = jnp.einsum("bij,bj->bi", matrices_pred, inputs)
-        preds_norm = (preds - train_mean) / train_std
-        targets_norm = (test_derivs - train_mean) / train_std
-        state_mse = float(mse(preds_norm, targets_norm))
-        param_mse = float(jnp.mean((matrices_pred - test_matrices) ** 2))
-        return state_mse, param_mse, preds, matrices_pred
-
     plot_dir = os.path.join(
         OUT_DIR,
-        f"exp6_{optimizer_factory.__name__}_bs_{batch_size}_steps_{num_steps}",
+        f"exp7_{optimizer_factory.__name__}_bs_{batch_size}_steps_{num_steps}",
     )
     os.makedirs(plot_dir, exist_ok=True)
 
     if history:
-        loss_ax = plot_loss(history, title="Exp6 Training Loss")
+        loss_ax = plot_loss(history, title="Exp7 Training Loss")
         _save_fig(loss_ax, plot_dir, "training_loss.png")
 
     if test_size > 0:
-        test_state_mse, param_mse, preds, matrices_pred = evaluate(model)
-        print("Exp6 test derivative MSE:", test_state_mse)
-        print("Exp6 parameter matrix MSE:", param_mse)
-        ts = jnp.arange(test_derivs.shape[0], dtype=jnp.float32)
+        predictions = jax.vmap(model)(test_states, test_controls)
+        mean = jnp.mean(test_derivs, axis=0, keepdims=True)
+        std = jnp.std(test_derivs, axis=0, keepdims=True) + 1e-8
+        preds_norm = (predictions - mean) / std
+        targets_norm = (test_derivs - mean) / std
+        test_mse = float(mse(preds_norm, targets_norm))
+        print("Exp7 test derivative MSE:", test_mse)
+        ts = jnp.arange(predictions.shape[0], dtype=jnp.float32)
         vel_ax = plot_timeseries_bundle(
             ts,
-            jnp.stack([test_derivs[:, 0], preds[:, 0]], axis=1),
+            jnp.stack([test_derivs[:, 0], predictions[:, 0]], axis=1),
             labels=("target velocity", "pred velocity"),
-            title="Exp6 Velocity Predictions",
+            title="Exp7 Velocity Predictions",
             styles=("solid", "--"),
         )
         _save_fig(vel_ax, plot_dir, "velocity_predictions.png")
         acc_ax = plot_timeseries_bundle(
             ts,
-            jnp.stack([test_derivs[:, 1], preds[:, 1]], axis=1),
+            jnp.stack([test_derivs[:, 1], predictions[:, 1]], axis=1),
             labels=("target acceleration", "pred acceleration"),
-            title="Exp6 Acceleration Predictions",
+            title="Exp7 Acceleration Predictions",
             styles=("solid", "--"),
         )
         _save_fig(acc_ax, plot_dir, "acceleration_predictions.png")
@@ -254,12 +213,12 @@ def main(
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["metric", "value"])
-            writer.writerow(["test_state_mse", test_state_mse])
-            writer.writerow(["param_mse", param_mse])
-    print("Exp6 training steps:", len(history))
+            writer.writerow(["test_mse", test_mse])
+
+    print("Exp7 training steps:", len(history))
 
 
 #%%
 if __name__ == "__main__":
-    print("Training Exp6 nonlinear MSD ensemble...")
+    print("Training Exp7 single-network nonlinear MSD...")
     main()

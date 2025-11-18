@@ -26,11 +26,16 @@ def plot_trajectory(
     labels: Iterable[str] = ("position", "velocity"),
     ax: Axes | None = None,
     title: str | None = "State Trajectories",
+    styles: Iterable[str] | None = None,
 ) -> Axes:
     ax = _get_ax(ax)
     states_np = np.asarray(states)
+    style_list = list(styles) if styles is not None else None
     for dim, label in enumerate(labels):
-        ax.plot(ts, states_np[:, dim], label=label)
+        if style_list is not None and dim < len(style_list):
+            ax.plot(ts, states_np[:, dim], label=label, linestyle=style_list[dim])
+        else:
+            ax.plot(ts, states_np[:, dim], label=label)
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("State")
     if title:
@@ -182,6 +187,7 @@ def plot_timeseries_bundle(
     labels: Iterable[str] | None = None,
     title: str = "Timeseries Bundle",
     colors: Iterable[str] | None = None,
+    styles: Iterable[str] | None = None,
 ) -> Axes:
     ts_np = np.asarray(ts)
     states_np = np.asarray(states)
@@ -195,8 +201,12 @@ def plot_timeseries_bundle(
     label_list = list(labels) if labels is not None else [f"state_{i}" for i in range(states_np.shape[1])]
     color_list = list(colors) if colors is not None else ["C0", "C1", "C2", "C3"]
     _, ax = plt.subplots(figsize=(8, 4))
+    style_list = list(styles) if styles is not None else None
     for idx in range(plot_values.shape[1]):
-        ax.plot(ts_np, plot_values[:, idx], label=label_list[idx], color=color_list[idx % len(color_list)])
+        kwargs = {"label": label_list[idx], "color": color_list[idx % len(color_list)]}
+        if style_list is not None and idx < len(style_list):
+            kwargs["linestyle"] = style_list[idx]
+        ax.plot(ts_np, plot_values[:, idx], **kwargs)
     mode = "Normalized" if normalized else "Raw"
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("State value")

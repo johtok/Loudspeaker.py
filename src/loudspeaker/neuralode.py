@@ -347,6 +347,7 @@ def plot_neural_ode_predictions(
         labels=prediction_labels,
         ax=trajectory_ax,
         title=None,
+        styles=tuple(["--"] * prediction.shape[1]),
     )
     labels_for_residuals = residual_labels or target_labels
     residual_ax = plot_residuals(ts, target, prediction, labels=labels_for_residuals)

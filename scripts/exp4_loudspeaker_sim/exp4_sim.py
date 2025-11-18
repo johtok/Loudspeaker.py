@@ -6,6 +6,8 @@ import os
 import sys
 
 import jax.random as jr
+import matplotlib.pyplot as plt
+import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
@@ -20,6 +22,16 @@ from loudspeaker import (
     simulate_loudspeaker_system,
 )
 from loudspeaker.testsignals import complex_tone_control, pink_noise_control
+
+
+def _save_fig(ax, filename: str) -> None:
+    if isinstance(ax, np.ndarray):
+        fig = ax.ravel()[0].figure
+    else:
+        fig = ax.figure
+    path = os.path.join(SCRIPT_DIR, filename)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 #%%
@@ -55,32 +67,39 @@ def main():
     state_labels = ("cone displacement", "cone velocity", "coil current")
 
     def _render_suite(result, name):
-        plot_phase_fan(
+        slug = name.lower().replace(" ", "_")
+        phase_ax = plot_phase_fan(
             result.states,
             labels=state_labels,
             normalized=False,
             title=f"Exp4 {name} Phase",
         )
-        plot_phase_fan(
+        _save_fig(phase_ax, f"{slug}_phase_raw.png")
+        phase_norm_ax = plot_phase_fan(
             result.states,
             labels=state_labels,
             normalized=True,
             title=f"Exp4 {name} Phase",
         )
-        plot_timeseries_bundle(
+        _save_fig(phase_norm_ax, f"{slug}_phase_normalized.png")
+        ts_ax = plot_timeseries_bundle(
             ts,
             result.states,
             labels=state_labels,
             normalized=False,
             title=f"Exp4 {name} Timeseries",
+            styles=("solid", "solid", "solid"),
         )
-        plot_timeseries_bundle(
+        _save_fig(ts_ax, f"{slug}_timeseries_raw.png")
+        ts_norm_ax = plot_timeseries_bundle(
             ts,
             result.states,
             labels=state_labels,
             normalized=True,
             title=f"Exp4 {name} Timeseries",
+            styles=("solid", "solid", "solid"),
         )
+        _save_fig(ts_norm_ax, f"{slug}_timeseries_normalized.png")
 
     _render_suite(pink_result, "Pink Noise")
     _render_suite(complex_result, "Complex Tone")

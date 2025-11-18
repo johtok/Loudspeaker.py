@@ -6,6 +6,8 @@ import os
 import sys
 
 import jax.random as jr
+import matplotlib.pyplot as plt
+import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
@@ -21,6 +23,16 @@ from loudspeaker import (
     plot_timeseries_bundle,
     simulate_msd_system,
 )
+
+
+def _save_fig(ax, filename: str) -> None:
+    if isinstance(ax, np.ndarray):
+        fig = ax.ravel()[0].figure
+    else:
+        fig = ax.figure
+    path = os.path.join(SCRIPT_DIR, filename)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 #%%
@@ -56,36 +68,43 @@ def main():
     complex_acc = complex_result.acceleration
 
     labels = ("position", "velocity")
-    for name, states in (
+    for idx, (name, states) in enumerate(
         ("Pink Noise", pink_states),
         ("Complex Tone", complex_states),
     ):
-        plot_phase_fan(
+        slug = name.lower().replace(" ", "_")
+        phase_ax = plot_phase_fan(
             states,
             labels=labels,
             normalized=False,
             title=f"{name} Phase",
         )
-        plot_phase_fan(
+        _save_fig(phase_ax, f"{slug}_phase_raw.png")
+        phase_norm_ax = plot_phase_fan(
             states,
             labels=labels,
             normalized=True,
             title=f"{name} Phase",
         )
-        plot_timeseries_bundle(
+        _save_fig(phase_norm_ax, f"{slug}_phase_normalized.png")
+        ts_ax = plot_timeseries_bundle(
             ts,
             states,
             labels=labels,
             normalized=False,
             title=f"{name} Timeseries",
+            styles=("solid", "solid"),
         )
-        plot_timeseries_bundle(
+        _save_fig(ts_ax, f"{slug}_timeseries_raw.png")
+        ts_norm_ax = plot_timeseries_bundle(
             ts,
             states,
             labels=labels,
             normalized=True,
             title=f"{name} Timeseries",
+            styles=("solid", "solid"),
         )
+        _save_fig(ts_norm_ax, f"{slug}_timeseries_normalized.png")
 
 
 #%%
