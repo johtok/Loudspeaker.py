@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from ..msd_sim import MSDConfig
 from ..loudspeaker_sim import LoudspeakerConfig
+from ..msd_sim import MSDConfig
 
 
 class _LinearModel(eqx.Module):
@@ -25,12 +23,16 @@ class LinearMSDModel(_LinearModel):
         self,
         config: MSDConfig,
         perturbation: float = 0.01,
-        key: jr.PRNGKey | None = None,
+        key: jax.Array | None = None,
     ):
         base = jnp.array(
             [
                 [0.0, 1.0, 0.0],
-                [-config.stiffness / config.mass, -config.damping / config.mass, 1.0 / config.mass],
+                [
+                    -config.stiffness / config.mass,
+                    -config.damping / config.mass,
+                    1.0 / config.mass,
+                ],
             ],
             dtype=jnp.float32,
         )
@@ -46,15 +48,25 @@ class LinearLoudspeakerModel(_LinearModel):
         self,
         config: LoudspeakerConfig,
         perturbation: float = 0.01,
-        key: jr.PRNGKey | None = None,
+        key: jax.Array | None = None,
     ):
         inv_mass = 1.0 / config.moving_mass
         inv_inductance = 1.0 / config.voice_coil_inductance
         base = jnp.array(
             [
                 [0.0, 1.0, 0.0, 0.0],
-                [-config.stiffness * inv_mass, -config.damping * inv_mass, config.motor_force * inv_mass, 0.0],
-                [0.0, -config.motor_force * inv_inductance, -config.voice_coil_resistance * inv_inductance, inv_inductance],
+                [
+                    -config.stiffness * inv_mass,
+                    -config.damping * inv_mass,
+                    config.motor_force * inv_mass,
+                    0.0,
+                ],
+                [
+                    0.0,
+                    -config.motor_force * inv_inductance,
+                    -config.voice_coil_resistance * inv_inductance,
+                    inv_inductance,
+                ],
             ],
             dtype=jnp.float32,
         )
@@ -70,7 +82,7 @@ class AugmentedMSDModel(_LinearModel):
         self,
         state_size: int,
         *,
-        key: jr.PRNGKey,
+        key: jax.Array,
         scale: float = 0.1,
     ):
         if state_size <= 0:

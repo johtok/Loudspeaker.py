@@ -3,7 +3,7 @@
 
 # %% [markdown]
 # This example demonstrates the use of implicit integrators to handle stiff dynamical systems. In this case we consider the Robertson problem.
-# 
+#
 # This example is available as a Jupyter notebook [here](https://github.com/patrick-kidger/diffrax/blob/main/docs/examples/stiff_ode.ipynb).
 
 # %%
@@ -20,6 +20,7 @@ import jax.numpy as jnp
 # %%
 jax.config.update("jax_enable_x64", True)
 
+
 # %%
 class Robertson(eqx.Module):
     k1: float
@@ -32,10 +33,12 @@ class Robertson(eqx.Module):
         f2 = self.k2 * y[1] ** 2
         return jnp.stack([f0, f1, f2])
 
+
 # %% [markdown]
 # One should almost always use adaptive step sizes when using implicit integrators. This is so that the step size can be reduced if the nonlinear solve (inside the implicit solve) doesn't converge.
-# 
+#
 # Note that the solver takes a `root_finder` argument, e.g. `Kvaerno5(root_finder=VeryChord())`. If you want to optimise performance then you can try adjusting the error tolerances, kappa value, and maximum number of steps for the nonlinear solver.
+
 
 # %%
 @jax.jit
@@ -61,6 +64,7 @@ def main(k1, k2, k3):
     )
     return sol
 
+
 # %% [markdown]
 # Do one iteration to JIT compile everything. Then time the second iteration.
 
@@ -75,5 +79,3 @@ print("Results:")
 for ti, yi in zip(sol.ts, sol.ys):
     print(f"t={ti.item()}, y={yi.tolist()}")
 print(f"Took {sol.stats['num_steps']} steps in {end - start} seconds.")
-
-

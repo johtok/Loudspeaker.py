@@ -162,11 +162,11 @@ The vector field function using MLP architecture:
 ```python
 class NeuralODEFunc(eqx.Module):
     """Vector field function for neural ODE using MLP architecture."""
-    
-    def __init__(self, data_size: int, hidden_dim: int, num_layers: int, 
+
+    def __init__(self, data_size: int, hidden_dim: int, num_layers: int,
                  activation: str = 'softplus', *, key: jax.random.PRNGKey):
         # Initialize MLP with learnable output scaling
-        
+
     def __call__(self, t: float, y: jnp.ndarray, args: Any) -> jnp.ndarray:
         # Compute vector field f(t, y, args)
         return self.out_scale * self.mlp(y)
@@ -178,8 +178,8 @@ The complete neural ODE model with initial condition mapping:
 ```python
 class NeuralODEModel(eqx.Module):
     """Complete neural ODE model with initial condition mapping."""
-    
-    def __call__(self, ts: jnp.ndarray, y0: jnp.ndarray, 
+
+    def __call__(self, ts: jnp.ndarray, y0: jnp.ndarray,
                  solver_config: Dict[str, Any] = None) -> jnp.ndarray:
         # Solve neural ODE from initial condition
         return solution.ys
@@ -333,7 +333,7 @@ Extend the existing classes for custom architectures:
 class CustomNeuralODEFunc(eqx.Module):
     def __init__(self, data_size, hidden_dim, *, key):
         # Your custom architecture
-        
+
     def __call__(self, t, y, args):
         # Your custom vector field computation
         return custom_vector_field
@@ -391,10 +391,10 @@ config = create_neural_ode_config(gradient_clipping=1.0)  # Prevents gradient ex
 def wrap_existing_model(existing_model):
     class WrappedNeuralODE(NeuralODEModel):
         def __init__(self, config, key):
-            super().__init__(config['output_dim'], config['hidden_dim'], 
+            super().__init__(config['output_dim'], config['hidden_dim'],
                            config['num_layers'], key=key)
             self.existing_model = existing_model
-            
+
         def __call__(self, ts, y0, solver_config=None):
             # Use existing model in neural ODE framework
             return solve_with_existing_model(self.existing_model, ts, y0)
@@ -505,14 +505,14 @@ for forcing_type in forcing_types:
         forcing_type=forcing_type,
         visualization_enabled=False  # Disable for batch processing
     )
-    
+
     # Train model
     model, history = train_neural_ode(model, train_data, config, test_data)
-    
+
     # Evaluate
     metrics = evaluate_model(model, test_data, config)
     results[forcing_type] = metrics
-    
+
     print(f"{forcing_type}: RMSE={metrics['total_rmse']:.6f}")
 ```
 

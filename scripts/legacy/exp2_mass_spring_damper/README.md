@@ -64,7 +64,7 @@ import sys
 sys.path.append('.')
 
 from scripts.exp2_mass_spring_damper.msd_simulation_with_forcing import (
-    MSDConfig, ForcingType, SolverType, run_single_simulation, 
+    MSDConfig, ForcingType, SolverType, run_single_simulation,
     run_batch_simulation, demonstrate_solver_comparison
 )
 
@@ -103,30 +103,30 @@ config = MSDConfig(
     mass=0.05,                    # Mass (kg)
     natural_frequency=25.0,       # Natural frequency (Hz)
     damping_ratio=0.01,           # Damping ratio
-    
+
     # Simulation parameters
     sample_rate=1000,             # Sample rate (Hz)
     simulation_time=0.1,          # Simulation duration (s)
     initial_conditions=(0.0, 0.0), # Initial [position, velocity]
-    
+
     # Forcing parameters
     forcing_type=ForcingType.PINK_NOISE,
     forcing_amplitude=1.0,        # Forcing amplitude
     frequency_range=(0.01, 400.0), # Frequency range (Hz)
     pink_noise_exponent=1.0,      # Pink noise spectral exponent
-    
+
     # Solver parameters
     solver_type=SolverType.KVAERNO5,
     rtol=1e-8,                    # Relative tolerance
     atol=1e-8,                    # Absolute tolerance
     dt0=None,                     # Initial time step (auto if None)
-    
+
     # Visualization parameters
     normalize_plots=True,
     normalization_type=NormalizationType.STANDARDIZE,
     save_plots=True,
     plot_format='png',
-    
+
     # Data generation
     batch_size=10,
     seed=1234

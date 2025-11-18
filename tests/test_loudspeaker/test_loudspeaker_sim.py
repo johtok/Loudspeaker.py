@@ -11,8 +11,8 @@ from loudspeaker.loudspeaker_sim import (
     simulate_loudspeaker_system,
     simulate_nonlinear_loudspeaker_system,
 )
-from loudspeaker.testsignals import build_control_signal
 from loudspeaker.models import LoudspeakerSimulationModel
+from loudspeaker.testsignals import build_control_signal
 
 
 def test_simulate_loudspeaker_system_returns_states_with_details():
@@ -65,7 +65,9 @@ def test_nonlinear_loudspeaker_restores_toward_equilibrium_without_forcing():
     )
     ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     control = build_control_signal(ts, jnp.zeros_like(ts))
-    result = simulate_nonlinear_loudspeaker_system(config, control, capture_details=True)
+    result = simulate_nonlinear_loudspeaker_system(
+        config, control, capture_details=True
+    )
     assert result.coil_force is not None
     # Nonlinear stiffness adds extra restoring force pushing displacement toward zero.
     assert jnp.sign(result.states[1, 1]) == -jnp.sign(config.initial_state[0])
@@ -80,7 +82,9 @@ def test_loudspeaker_simulator_accepts_custom_time_grid():
 
 
 def test_nonlinear_loudspeaker_simulator_accepts_custom_grid():
-    config = NonlinearLoudspeakerConfig(num_samples=16, sample_rate=400.0, suspension_cubic=0.1)
+    config = NonlinearLoudspeakerConfig(
+        num_samples=16, sample_rate=400.0, suspension_cubic=0.1
+    )
     ts = jnp.linspace(0.0, config.duration / 4.0, config.num_samples, dtype=jnp.float32)
     control = build_control_signal(ts, jnp.zeros_like(ts))
     result = simulate_nonlinear_loudspeaker_system(config, control, ts=ts)
@@ -102,7 +106,9 @@ def test_loudspeaker_simulation_model_facade(monkeypatch):
         called["capture_details"] = capture_details
         return "ok"
 
-    monkeypatch.setattr("loudspeaker.models.simulation.simulate_loudspeaker_system", _fake_sim)
+    monkeypatch.setattr(
+        "loudspeaker.models.simulation.simulate_loudspeaker_system", _fake_sim
+    )
     result = sim_model.simulate(control, capture_details=True)
     assert result == "ok"
     assert called["config"] is config

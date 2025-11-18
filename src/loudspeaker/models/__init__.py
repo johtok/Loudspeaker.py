@@ -1,9 +1,9 @@
 """Model primitives shared across Loudspeaker experiments."""
 
 from .linear import (
+    AugmentedMSDModel,
     LinearLoudspeakerModel,
     LinearMSDModel,
-    AugmentedMSDModel,
     _LinearModel,
 )
 from .simulation import LoudspeakerSimulationModel

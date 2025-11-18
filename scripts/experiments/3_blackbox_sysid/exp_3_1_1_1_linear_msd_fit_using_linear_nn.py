@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Linear MSD fit using linear NN (taxonomy 3.1.1.1)."""
 
-#%%
+# %%
 import csv
 import os
 import sys
@@ -26,19 +26,19 @@ for path in (SCRIPT_DIR, ROOT_DIR):
 
 from loudspeaker import LabelSpec
 from loudspeaker.data import StaticTrainingStrategy, build_msd_dataset, msd_dataloader
+from loudspeaker.io import save_npz_bundle
 from loudspeaker.metrics import mae, mse
-from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.models import LinearMSDModel
+from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.neuralode import (
     NeuralODE,
+    TensorBoardCallback,
     build_loss_fn,
     plot_neural_ode_predictions,
     predict_neural_ode,
     train_neural_ode,
 )
 from loudspeaker.plotting import plot_timeseries_bundle, save_figure
-from loudspeaker.io import save_npz_bundle
-
 
 jax.config.update("jax_enable_x64", True)
 
@@ -67,11 +67,15 @@ def _save_fig(ax, folder: str, filename: str) -> None:
     save_figure(ax, os.path.join(folder, filename))
 
 
-def _evaluation_batches(forcing: jnp.ndarray, reference: jnp.ndarray) -> Iterable[Batch]:
+def _evaluation_batches(
+    forcing: jnp.ndarray, reference: jnp.ndarray
+) -> Iterable[Batch]:
     for i in range(forcing.shape[0]):
         yield forcing[i : i + 1], reference[i : i + 1]
 
+
 # %%
+
 
 def main(
     optimizer_factory=optax.adam,
@@ -100,8 +104,14 @@ def main(
         train_size = dataset_size - 1
     test_size = dataset_size - train_size
 
-    train_forcing, test_forcing = dataset.forcing[:train_size], dataset.forcing[train_size:]
-    train_reference, test_reference = dataset.reference[:train_size], dataset.reference[train_size:]
+    train_forcing, test_forcing = (
+        dataset.forcing[:train_size],
+        dataset.forcing[train_size:],
+    )
+    train_reference, test_reference = (
+        dataset.reference[:train_size],
+        dataset.reference[train_size:],
+    )
 
     strategy = StaticTrainingStrategy(steps=num_steps)
     data_loader = msd_dataloader(
@@ -120,6 +130,15 @@ def main(
         dt=config.dt,
     )
 
+    run_name = f"exp5_{optimizer_factory.__name__}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}"
+    tensorboard_dir = os.path.join(
+        ROOT_DIR,
+        "out",
+        "tensorboard",
+        "3_blackbox_sysid",
+        run_name,
+    )
+
     neural_ode = NeuralODE(
         model=model,
         loss_fn=loss_fn,
@@ -128,12 +147,13 @@ def main(
         initial_state=config.initial_state,
         dt=config.dt,
         num_steps=strategy.total_steps,
+        tensorboard_callback=TensorBoardCallback(tensorboard_dir),
     )
 
     trained = train_neural_ode(neural_ode, data_loader)
     plot_dir = os.path.join(
         OUT_DIR,
-        f"exp5_{optimizer_factory.__name__}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}",
+        run_name,
     )
     os.makedirs(plot_dir, exist_ok=True)
     eval_predictions, eval_targets = predict_neural_ode(
@@ -146,7 +166,9 @@ def main(
 
     test_mse = None
     if test_size > 0:
-        test_predictions, test_targets = predict_neural_ode(trained, _evaluation_batches(test_forcing, test_reference))
+        test_predictions, test_targets = predict_neural_ode(
+            trained, _evaluation_batches(test_forcing, test_reference)
+        )
         test_mse = float(mse(test_predictions, test_targets))
         print("Exp5 Test MSE:", test_mse)
         eval_ts = neural_ode.ts[: test_predictions.shape[1]]
@@ -206,6 +228,7 @@ def main(
     param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
     print("Exp5 state matrix parameter MSE:", param_mse)
     print("Exp5 training history length:", len(trained.history))
+
 
 # %%
 

@@ -5,7 +5,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 from loudspeaker.testsignals import (
@@ -47,7 +48,9 @@ def test_build_control_signal_roundtrip(series, dt):
 
     control = build_control_signal(ts, values)
     chex.assert_shape(control.values, values.shape)
-    chex.assert_trees_all_close(control.evaluate_batch(ts), values, atol=1e-5, rtol=1e-5)
+    chex.assert_trees_all_close(
+        control.evaluate_batch(ts), values, atol=1e-5, rtol=1e-5
+    )
 
 
 def test_control_signal_evaluate_batch_matches_scalar_calls():
@@ -75,7 +78,8 @@ def test_complex_tone_control_matches_manual_sum():
         phases=phases,
     )
     manual = jnp.sum(
-        amplitudes[:, None] * jnp.sin(2 * jnp.pi * freqs[:, None] * control.ts + phases[:, None]),
+        amplitudes[:, None]
+        * jnp.sin(2 * jnp.pi * freqs[:, None] * control.ts + phases[:, None]),
         axis=0,
     )
     chex.assert_trees_all_close(control.values, manual)
@@ -106,7 +110,9 @@ def test_pink_noise_control_is_deterministic_for_fixed_key():
     control_a = pink_noise_control(num_samples, dt, key, band=band)
     control_b = pink_noise_control(num_samples, dt, key, band=band)
     chex.assert_trees_all_close(control_a.values, control_b.values)
-    chex.assert_trees_all_close(control_a.evaluate_batch(control_a.ts), control_a.values)
+    chex.assert_trees_all_close(
+        control_a.evaluate_batch(control_a.ts), control_a.values
+    )
 
 
 def test_pink_noise_has_higher_low_frequency_power():
@@ -141,11 +147,16 @@ def test_control_signal_tree_roundtrip():
 
 def test_pink_noise_control_validates_band(monkeypatch):
     pytest.importorskip("colorednoise")
-    monkeypatch.setattr("loudspeaker.testsignals.powerlaw_psd_gaussian", lambda exponent, n, random_state=None: np.ones(n))
+    monkeypatch.setattr(
+        "loudspeaker.testsignals.powerlaw_psd_gaussian",
+        lambda exponent, n, random_state=None: np.ones(n),
+    )
     with pytest.raises(ValueError):
         pink_noise_control(num_samples=16, dt=1e-3, key=jr.PRNGKey(0), band=(0.0, 1.0))
     with pytest.raises(ValueError):
-        pink_noise_control(num_samples=16, dt=1e-3, key=jr.PRNGKey(0), band=(10.0, 5000.0))
+        pink_noise_control(
+            num_samples=16, dt=1e-3, key=jr.PRNGKey(0), band=(10.0, 5000.0)
+        )
 
 
 def test_pink_noise_control_handles_filter_fallback(monkeypatch):
@@ -180,8 +191,14 @@ def test_pink_noise_control_handles_filter_fallback(monkeypatch):
 
 def test_pink_noise_control_handles_zero_padlen(monkeypatch):
     pytest.importorskip("colorednoise")
-    monkeypatch.setattr("loudspeaker.testsignals.powerlaw_psd_gaussian", lambda exponent, n, random_state=None: np.ones(n))
-    monkeypatch.setattr("loudspeaker.testsignals.signal.butter", lambda *args, **kwargs: np.zeros((0, 6)))
+    monkeypatch.setattr(
+        "loudspeaker.testsignals.powerlaw_psd_gaussian",
+        lambda exponent, n, random_state=None: np.ones(n),
+    )
+    monkeypatch.setattr(
+        "loudspeaker.testsignals.signal.butter",
+        lambda *args, **kwargs: np.zeros((0, 6)),
+    )
 
     def fake_sosfiltfilt(*args, **kwargs):
         raise ValueError("force fallback")

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Any, Callable, Tuple, TypeAlias, cast
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import numpy as np
 from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
 
 from .msd_sim import MSDConfig, SimulationResult
 from .testsignals import ControlSignal
+
+ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
 
 
 @dataclass(frozen=True)
@@ -39,7 +42,9 @@ class NonlinearMSDConfig:
             raise ValueError("dataset_size must be at least 2.")
 
 
-def nonlinear_msd_derivative(config: NonlinearMSDConfig, state: jnp.ndarray, control: jnp.ndarray) -> jnp.ndarray:
+def nonlinear_msd_derivative(
+    config: NonlinearMSDConfig, state: jnp.ndarray, control: jnp.ndarray
+) -> jnp.ndarray:
     """Exact dynamics for the Duffing-like MSD oscillator."""
 
     pos, vel = state
@@ -67,16 +72,21 @@ def nonlinear_msd_matrix(config: NonlinearMSDConfig, state: jnp.ndarray) -> jnp.
 
 def build_nonlinear_msd_training_data(
     config: NonlinearMSDConfig,
-    key: jr.PRNGKey,
+    key: jax.Array,
     *,
     include_matrices: bool = False,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> (
+    Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
+    | Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]
+):
     """Sample random states/controls and evaluate nonlinear MSD derivatives."""
 
     rng, state_key, control_key = jr.split(key, 3)
     states = config.state_scale * jr.normal(state_key, (config.dataset_size, 2))
     controls = config.control_scale * jr.normal(control_key, (config.dataset_size, 1))
-    derivatives = jax.vmap(lambda s, u: nonlinear_msd_derivative(config, s, u))(states, controls)
+    derivatives = jax.vmap(lambda s, u: nonlinear_msd_derivative(config, s, u))(
+        states, controls
+    )
 
     if not include_matrices:
         return states, controls, derivatives
@@ -98,10 +108,11 @@ class NonlinearMSDSimConfig(MSDConfig):
 def _build_nonlinear_vector_field(
     config: NonlinearMSDSimConfig,
     forcing: ControlSignal,
-):
-    def vf(t: float, state: jnp.ndarray, args) -> jnp.ndarray:
+) -> Callable[[ScalarLike, jnp.ndarray, Any], jnp.ndarray]:
+    def vf(t: ScalarLike, state: jnp.ndarray, _args: Any) -> jnp.ndarray:
+        force_input = cast(float | jnp.ndarray, t)
         pos, vel = state
-        force = forcing.evaluate(t)
+        force = forcing.evaluate(force_input)
         restoring = config.stiffness * pos + config.cubic * (pos**3)
         acc = (force - config.damping * vel - restoring) / config.mass
         return jnp.array([vel, acc], dtype=jnp.float32)
@@ -123,7 +134,7 @@ def simulate_nonlinear_msd_system(
         ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     else:
         ts = jnp.asarray(ts, dtype=jnp.float32)
-    term = ODETerm(_build_nonlinear_vector_field(config, forcing))
+    term: ODETerm = ODETerm(_build_nonlinear_vector_field(config, forcing))
     sol = diffeqsolve(
         term,
         solver,
@@ -134,10 +145,13 @@ def simulate_nonlinear_msd_system(
         saveat=SaveAt(ts=ts),
     )
 
+    if sol.ts is None or sol.ys is None:
+        raise RuntimeError("Solver returned no trajectory.")
+
     forces = None
     acc = None
     if capture_details:
-        forces = forcing.evaluate_batch(ts)
+        forces = forcing.evaluate_batch(sol.ts)
         restoring = config.stiffness * sol.ys[:, 0] + config.cubic * (sol.ys[:, 0] ** 3)
         acc = (forces - config.damping * sol.ys[:, 1] - restoring) / config.mass
 

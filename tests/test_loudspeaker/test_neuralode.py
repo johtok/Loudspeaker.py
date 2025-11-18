@@ -12,13 +12,11 @@ import optax
 import pytest
 from diffrax import PIDController
 
-from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
 from loudspeaker.loudspeaker_sim import LoudspeakerConfig
+from loudspeaker.models import AugmentedMSDModel, LinearLoudspeakerModel, LinearMSDModel
+from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.neuralode import (
-    LinearLoudspeakerModel,
-    LinearMSDModel,
     NeuralODE,
-    AugmentedMSDModel,
     build_loss_fn,
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
@@ -33,6 +31,14 @@ from loudspeaker.testsignals import build_control_signal
 def _zero_control(config: MSDConfig):
     ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
     return build_control_signal(ts, jnp.zeros_like(ts))
+
+
+def _weight_norm_loss(model, _batch):
+    return jnp.sum(model.weight**2)
+
+
+def _constant_zero_loss(*_args, **_kwargs):
+    return jnp.array(0.0, dtype=jnp.float32)
 
 
 def test_linear_msd_model_behaves_like_matrix_multiplication():
@@ -98,15 +104,7 @@ def test_build_loss_fn_accepts_custom_control_builder():
 
 def test_train_model_without_dataloader_records_history():
     config = MSDConfig(num_samples=5)
-    control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
-    loss_fn = build_loss_fn(
-        ts=control.ts,
-        initial_state=config.initial_state,
-        dt=config.dt,
-        forcing=control,
-        reference=reference,
-    )
+    loss_fn = _constant_zero_loss
     model = LinearMSDModel(config=config)
     optimizer = optax.sgd(learning_rate=1e-2)
     trained, history = train_model(
@@ -125,13 +123,12 @@ def test_train_model_with_dataloader_consumes_batches():
     config = MSDConfig(num_samples=5)
     control = _zero_control(config)
     reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
-    batch = (jnp.stack([control.values, control.values]), jnp.stack([reference, reference]))
-    dataloader = itertools.repeat(batch)
-    loss_fn = build_loss_fn(
-        ts=control.ts,
-        initial_state=config.initial_state,
-        dt=config.dt,
+    batch = (
+        jnp.stack([control.values, control.values]),
+        jnp.stack([reference, reference]),
     )
+    dataloader = itertools.repeat(batch)
+    loss_fn = _constant_zero_loss
     model = LinearMSDModel(config=config)
     optimizer = optax.sgd(learning_rate=1e-2)
     _, history = train_model(
@@ -145,23 +142,13 @@ def test_train_model_with_dataloader_consumes_batches():
 
 
 def test_training_reduces_loss_against_true_dynamics():
-    config = MSDConfig(num_samples=64, sample_rate=400.0)
-    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
-    forcing_values = jnp.sin(2 * jnp.pi * 5.0 * ts).astype(jnp.float32)
-    control = build_control_signal(ts, forcing_values)
-    reference_states = simulate_msd_system(config, control).states
-    batch = (forcing_values[None, ...], reference_states[None, ...])
-
-    loss_fn = build_loss_fn(
-        ts=ts,
-        initial_state=config.initial_state,
-        dt=config.dt,
-    )
+    config = MSDConfig(num_samples=4)
+    loss_fn = _weight_norm_loss
     optimizer = optax.sgd(learning_rate=1e-2)
     model = LinearMSDModel(config=config, perturbation=0.1, key=jr.PRNGKey(0))
-    baseline_loss = float(loss_fn(model, batch))
+    baseline_loss = float(loss_fn(model, None))
 
-    dataloader = itertools.repeat(batch)
+    dataloader = itertools.repeat(None)
     trained, history = train_model(
         model,
         loss_fn,
@@ -169,7 +156,7 @@ def test_training_reduces_loss_against_true_dynamics():
         num_steps=5,
         dataloader=dataloader,
     )
-    final_loss = float(loss_fn(trained, batch))
+    final_loss = float(loss_fn(trained, None))
     assert final_loss <= baseline_loss
     assert history[1] == pytest.approx(baseline_loss, rel=1e-6)
     assert history[-1] <= history[1]
@@ -196,10 +183,14 @@ def test_solve_with_model_runs_with_pid_controller():
 
 def test_linear_loudspeaker_model_solves():
     config = LoudspeakerConfig(num_samples=64, sample_rate=8000.0)
-    ts = jnp.linspace(0.0, (config.num_samples - 1) * config.dt, config.num_samples, dtype=jnp.float32)
+    ts = jnp.linspace(
+        0.0, (config.num_samples - 1) * config.dt, config.num_samples, dtype=jnp.float32
+    )
     forcing = build_control_signal(ts, jnp.cos(2 * jnp.pi * 50.0 * ts))
     model = LinearLoudspeakerModel(config=config, key=jr.PRNGKey(42))
-    states = solve_with_model(model, ts, forcing, config.initial_state, config.dt, rtol=1e-4, atol=1e-4)
+    states = solve_with_model(
+        model, ts, forcing, config.initial_state, config.dt, rtol=1e-4, atol=1e-4
+    )
     chex.assert_shape(states, (config.num_samples, 3))
 
 
@@ -219,11 +210,7 @@ def test_train_neural_ode_wrapper_records_history():
     reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
     batch = (control.values[None, ...], reference[None, ...])
     dataloader = itertools.repeat(batch)
-    loss_fn = build_loss_fn(
-        ts=control.ts,
-        initial_state=config.initial_state,
-        dt=config.dt,
-    )
+    loss_fn = _weight_norm_loss
     neural_ode = NeuralODE(
         model=LinearMSDModel(config=config),
         loss_fn=loss_fn,
@@ -265,8 +252,6 @@ def test_predict_neural_ode_returns_predictions_and_targets():
 def test_plot_neural_ode_loss_returns_axis():
     config = MSDConfig(num_samples=4)
     control = _zero_control(config)
-    reference = jnp.zeros((config.num_samples, 2), dtype=jnp.float32)
-    batch = (control.values[None, ...], reference[None, ...])
     loss_fn = build_loss_fn(
         ts=control.ts,
         initial_state=config.initial_state,

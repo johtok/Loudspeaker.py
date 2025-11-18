@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nonlinear MSD (Duffing) data source (taxonomy 0.2.1)."""
 
-#%%
+# %%
 import os
 import sys
 
@@ -29,7 +29,10 @@ from loudspeaker import (
     save_figure,
     save_npz_bundle,
 )
-from loudspeaker.nonlinear_msd import NonlinearMSDSimConfig, simulate_nonlinear_msd_system
+from loudspeaker.nonlinear_msd import (
+    NonlinearMSDSimConfig,
+    simulate_nonlinear_msd_system,
+)
 from loudspeaker.testsignals import complex_tone_control, pink_noise_control
 
 POSITION = LabelSpec("Position", "m", "x")
@@ -39,6 +42,7 @@ FORCING = LabelSpec("Forcing force", "N", "F")
 STATE_LABELS = raw_labels(POSITION, VELOCITY)
 STATE_LABELS_NORMALIZED = normalized_labels(POSITION, VELOCITY)
 ACC_FORCE_LABELS = normalized_labels(ACCELERATION, FORCING)
+
 
 def _save_fig(ax, filename: str) -> None:
     save_figure(ax, os.path.join(OUT_DIR, filename))
@@ -98,7 +102,7 @@ def _render_suite(
     )
 
 
-#%%
+# %%
 def main() -> None:
     config = NonlinearMSDSimConfig(
         num_samples=2048,
@@ -136,7 +140,7 @@ def main() -> None:
     _render_suite("Complex Tone", complex_result, complex_control.values)
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Generating nonlinear MSD trajectories...")
     main()

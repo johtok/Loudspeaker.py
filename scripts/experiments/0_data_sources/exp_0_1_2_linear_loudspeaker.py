@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Linear loudspeaker data source (taxonomy 0.1.2)."""
 
-#%%
+# %%
 import os
 import sys
 
 import jax.random as jr
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
 OUT_DIR = os.path.join(
@@ -35,14 +36,16 @@ CONE_DISPLACEMENT = LabelSpec("Cone displacement", "m", "x")
 CONE_VELOCITY = LabelSpec("Cone velocity", "m/s", "v")
 COIL_CURRENT = LabelSpec("Coil current", "A", "i")
 STATE_LABELS = raw_labels(CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT)
-STATE_LABELS_NORMALIZED = normalized_labels(CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT)
+STATE_LABELS_NORMALIZED = normalized_labels(
+    CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT
+)
 
 
 def _save_fig(ax, filename: str) -> None:
     save_figure(ax, os.path.join(OUT_DIR, filename))
 
 
-#%%
+# %%
 def main() -> None:
     config = LoudspeakerConfig(num_samples=1024, sample_rate=48000.0)
     key = jr.PRNGKey(84)
@@ -119,7 +122,7 @@ def main() -> None:
     _render_suite(complex_result, "Complex Tone", complex_control.values)
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Running linear loudspeaker data generator...")
     main()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -30,5 +30,5 @@ def save_npz_bundle(path: str | Path, **arrays: Any) -> Path:
 
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(output, **payload)
+    np.savez(output, **cast(dict[str, Any], payload))
     return output

@@ -35,13 +35,17 @@ def test_build_nonlinear_dataset_can_return_matrices():
         include_matrices=True,
     )
     chex.assert_shape(matrices, (config.dataset_size, 2, 3))
-    expected = jnp.broadcast_to(jnp.array([0.0, 1.0, 0.0], dtype=jnp.float32), (config.dataset_size, 3))
+    expected = jnp.broadcast_to(
+        jnp.array([0.0, 1.0, 0.0], dtype=jnp.float32), (config.dataset_size, 3)
+    )
     chex.assert_trees_all_close(matrices[:, 0, :], expected, atol=1e-6)
 
 
 def test_simulate_nonlinear_matches_linear_when_cubic_zero():
     base_config = MSDConfig(num_samples=64, sample_rate=400.0)
-    ts = jnp.linspace(0.0, base_config.duration, base_config.num_samples, dtype=jnp.float32)
+    ts = jnp.linspace(
+        0.0, base_config.duration, base_config.num_samples, dtype=jnp.float32
+    )
     forcing = build_control_signal(ts, jnp.ones_like(ts))
     linear_result = simulate_msd_system(base_config, forcing)
     nonlinear_config = NonlinearMSDSimConfig(
@@ -54,7 +58,9 @@ def test_simulate_nonlinear_matches_linear_when_cubic_zero():
         cubic=0.0,
     )
     nonlinear_result = simulate_nonlinear_msd_system(nonlinear_config, forcing)
-    chex.assert_trees_all_close(linear_result.states, nonlinear_result.states, atol=1e-6)
+    chex.assert_trees_all_close(
+        linear_result.states, nonlinear_result.states, atol=1e-6
+    )
 
 
 def test_simulate_nonlinear_includes_cubic_restoring_force():
@@ -71,10 +77,14 @@ def test_simulate_nonlinear_includes_cubic_restoring_force():
         initial_state=jnp.array([0.05, 0.0], dtype=jnp.float32),
         cubic=config.cubic,
     )
-    result = simulate_nonlinear_msd_system(displaced_config, forcing, capture_details=True)
+    result = simulate_nonlinear_msd_system(
+        displaced_config, forcing, capture_details=True
+    )
     chex.assert_trees_all_close(result.states[0], displaced_config.initial_state)
     # Ensure the cubic force accelerates the mass back toward zero displacement.
-    assert jnp.sign(result.acceleration[0]) == -jnp.sign(displaced_config.initial_state[0])
+    assert jnp.sign(result.acceleration[0]) == -jnp.sign(
+        displaced_config.initial_state[0]
+    )
 
 
 def test_simulate_nonlinear_msd_custom_time_grid():

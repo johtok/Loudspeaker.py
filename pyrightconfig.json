@@ -1,0 +1,19 @@
+{
+  "include": ["src"],
+  "exclude": [
+    "examples",
+    "scripts",
+    "repos",
+    "tests",
+    "logs",
+    ".pixi",
+    "out"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalSubscript": "none",
+  "reportOptionalOperand": "none"
+}

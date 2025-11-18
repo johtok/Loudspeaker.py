@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import numpy as np
 import chex
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from loudspeaker.msd_sim import MSDConfig, simulate_msd_system
@@ -36,7 +36,9 @@ def test_simulate_msd_system_return_details_matches_force():
     chex.assert_trees_all_close(result.forces, control.values)
     chex.assert_shape(result.states, (config.num_samples, 2))
     chex.assert_shape(result.acceleration, (config.num_samples,))
-    chex.assert_trees_all_close(result.acceleration, jnp.zeros_like(result.acceleration))
+    chex.assert_trees_all_close(
+        result.acceleration, jnp.zeros_like(result.acceleration)
+    )
 
 
 def test_simulate_msd_system_accepts_custom_time_grid():
@@ -57,7 +59,9 @@ def test_msd_config_scaling_relations():
     config = MSDConfig(mass=0.12, natural_frequency=30.0, damping_ratio=0.05)
     omega = 2 * jnp.pi * config.natural_frequency
     chex.assert_trees_all_close(config.stiffness, config.mass * omega**2)
-    chex.assert_trees_all_close(config.damping, 2 * config.damping_ratio * config.mass * omega)
+    chex.assert_trees_all_close(
+        config.damping, 2 * config.damping_ratio * config.mass * omega
+    )
 
 
 def test_simulation_obeys_newtonian_dynamics():
@@ -94,7 +98,10 @@ def test_simulation_result_tree_roundtrip():
     result = simulate_msd_system(config, control, capture_details=True)
     leaves, _ = result.tree_flatten()
     rebuilt = result.tree_unflatten(None, leaves)
-    for original, new in zip((result.ts, result.states, result.forces, result.acceleration), (rebuilt.ts, rebuilt.states, rebuilt.forces, rebuilt.acceleration)):
+    for original, new in zip(
+        (result.ts, result.states, result.forces, result.acceleration),
+        (rebuilt.ts, rebuilt.states, rebuilt.forces, rebuilt.acceleration),
+    ):
         if original is None:
             assert new is None
         else:

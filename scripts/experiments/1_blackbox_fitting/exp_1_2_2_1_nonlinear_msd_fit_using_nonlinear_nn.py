@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Nonlinear MSD fit using nonlinear NN (taxonomy 1.2.2.1)."""
 
-#%%
+# %%
+import csv
 import os
 import sys
 from typing import Iterator, Tuple
 
-import csv
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -26,14 +26,13 @@ for path in (SCRIPT_DIR, ROOT_DIR):
         sys.path.append(path)
 
 from loudspeaker import LabelSpec
-from loudspeaker.metrics import mse, nrmse
-from loudspeaker.plotting import plot_timeseries_bundle, plot_loss, save_figure
 from loudspeaker.io import save_npz_bundle
+from loudspeaker.metrics import mse, nrmse
 from loudspeaker.nonlinear_msd import (
     NonlinearMSDConfig,
     build_nonlinear_msd_training_data,
 )
-
+from loudspeaker.plotting import plot_loss, plot_timeseries_bundle, save_figure
 
 jax.config.update("jax_enable_x64", True)
 
@@ -144,7 +143,9 @@ def main(
         batch: Batch,
     ) -> tuple[SingleNN, optax.OptState, jnp.ndarray]:
         loss_val, grads = loss_grad(current_model, batch)
-        updates, new_state = optimizer.update(grads, current_opt_state, eqx.filter(current_model, eqx.is_array))
+        updates, new_state = optimizer.update(
+            grads, current_opt_state, eqx.filter(current_model, eqx.is_array)
+        )
         new_model = eqx.apply_updates(current_model, updates)
         return new_model, new_state, loss_val
 
@@ -166,9 +167,10 @@ def main(
 
     if test_size > 0:
         predictions = jax.vmap(model)(test_states, test_controls)
-        mean = jnp.mean(test_derivs, axis=0, keepdims=True)
         std = jnp.std(test_derivs, axis=0, keepdims=True) + 1e-8
-        component_nrmse_pct = 100.0 * jnp.sqrt(jnp.mean(((predictions - test_derivs) / std) ** 2, axis=0))
+        component_nrmse_pct = 100.0 * jnp.sqrt(
+            jnp.mean(((predictions - test_derivs) / std) ** 2, axis=0)
+        )
         vel_nrmse_pct = float(component_nrmse_pct[0])
         acc_nrmse_pct = float(component_nrmse_pct[1])
         test_nrmse_pct = float(100.0 * nrmse(predictions, test_derivs, normalizer=std))
@@ -207,7 +209,7 @@ def main(
     print("Exp7 training steps:", len(history))
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Training Exp7 single-network nonlinear MSD...")
     main()

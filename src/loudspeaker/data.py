@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Mapping, Sequence, Tuple
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
 from .loudspeaker_sim import LoudspeakerConfig, simulate_loudspeaker_system
+from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
 from .testsignals import ControlSignal, pink_noise_control
-
 
 ForcingFactory = Callable[..., ControlSignal]
 Batch = tuple[jnp.ndarray, jnp.ndarray]
@@ -21,14 +21,18 @@ class MSDDataset:
     forcing: jnp.ndarray
     reference: jnp.ndarray
 
-    def __iter__(self: MSDDataset) -> Iterator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    def __iter__(
+        self: MSDDataset,
+    ) -> Iterator[jnp.ndarray]:
+        """Allow unpacking as (ts, forcing, reference)."""
+
         return iter((self.ts, self.forcing, self.reference))
 
 
 def build_msd_dataset(
     config: MSDConfig,
     dataset_size: int,
-    key: jr.PRNGKey,
+    key: jax.Array,
     band: Tuple[float, float] | None = (1.0, 100.0),
     *,
     forcing_fn: ForcingFactory | None = None,
@@ -70,7 +74,7 @@ def build_msd_dataset(
 def build_loudspeaker_dataset(
     config: LoudspeakerConfig,
     dataset_size: int,
-    key: jr.PRNGKey,
+    key: jax.Array,
     band: Tuple[float, float] | None = (20.0, 1000.0),
     *,
     forcing_fn: ForcingFactory | None = None,
@@ -151,7 +155,9 @@ def _phase_length(num_samples: int, fraction: float) -> int:
     return min(length, num_samples)
 
 
-def _permuted_batch_indices(dataset_size: int, batch_size: int, key: jr.PRNGKey) -> Iterator[jnp.ndarray]:
+def _permuted_batch_indices(
+    dataset_size: int, batch_size: int, key: jax.Array
+) -> Iterator[jnp.ndarray]:
     rng = key
     while True:
         rng, perm_key = jr.split(rng)
@@ -167,7 +173,7 @@ def msd_dataloader(
     reference_states: jnp.ndarray,
     batch_size: int,
     *,
-    key: jr.PRNGKey,
+    key: jax.Array,
     strategy: TrainingStrategy | None = None,
 ) -> Iterator[Batch]:
     """Iterate over MSD samples with optional curriculum strategy."""

@@ -2,11 +2,40 @@ from .data import (
     MSDDataset,
     StaticTrainingStrategy,
     TrainingStrategy,
-    build_msd_dataset,
     build_loudspeaker_dataset,
+    build_msd_dataset,
     msd_dataloader,
 )
+from .io import save_npz_bundle
+from .loudspeaker_sim import (
+    LoudspeakerConfig,
+    LoudspeakerSimulationResult,
+    NonlinearLoudspeakerConfig,
+    simulate_loudspeaker_system,
+    simulate_nonlinear_loudspeaker_system,
+)
+from .metrics import mae, mse, norm_mse, nrmse
+from .models import (
+    AugmentedMSDModel,
+    LinearLoudspeakerModel,
+    LinearMSDModel,
+    LoudspeakerSimulationModel,
+    ReservoirMSDModel,
+)
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
+from .neuralode import (
+    NeuralODE,
+    build_loss_fn,
+    norm_loss_fn,
+    CheckpointManager,
+    TensorBoardCallback,
+    plot_neural_ode_loss,
+    plot_neural_ode_predictions,
+    predict_neural_ode,
+    solve_with_model,
+    train_model,
+    train_neural_ode,
+)
 from .nonlinear_msd import (
     NonlinearMSDConfig,
     NonlinearMSDSimConfig,
@@ -15,49 +44,18 @@ from .nonlinear_msd import (
     nonlinear_msd_matrix,
     simulate_nonlinear_msd_system,
 )
-from .loudspeaker_sim import (
-    LoudspeakerConfig,
-    LoudspeakerSimulationResult,
-    NonlinearLoudspeakerConfig,
-    simulate_loudspeaker_system,
-    simulate_nonlinear_loudspeaker_system,
-)
-from .models import (
-    AugmentedMSDModel,
-    LinearLoudspeakerModel,
-    LinearMSDModel,
-    LoudspeakerSimulationModel,
-    ReservoirMSDModel,
-)
-from .neuralode import (
-    NeuralODE,
-    build_loss_fn,
-    norm_loss_fn,
-    plot_neural_ode_loss,
-    plot_neural_ode_predictions,
-    predict_neural_ode,
-    solve_with_model,
-    train_model,
-    train_neural_ode,
-)
+from .plot_labels import LabelSpec, normalized_labels, raw_labels
 from .plotting import (
     plot_loss,
     plot_normalized_phase_suite,
     plot_phase,
     plot_phase_fan,
-    plot_timeseries_bundle,
     plot_residuals,
+    plot_timeseries_bundle,
     plot_trajectory,
     save_figure,
 )
-from .plot_labels import LabelSpec, normalized_labels, raw_labels
-from .io import save_npz_bundle
-from .metrics import mae, mse, norm_mse, nrmse
-from .testsignals import (
-    ControlSignal,
-    complex_tone_control,
-    pink_noise_control,
-)
+from .testsignals import ControlSignal, complex_tone_control, pink_noise_control
 
 __all__ = [
     "StaticTrainingStrategy",
@@ -88,6 +86,8 @@ __all__ = [
     "NeuralODE",
     "build_loss_fn",
     "norm_loss_fn",
+    "TensorBoardCallback",
+    "CheckpointManager",
     "plot_neural_ode_loss",
     "plot_neural_ode_predictions",
     "predict_neural_ode",

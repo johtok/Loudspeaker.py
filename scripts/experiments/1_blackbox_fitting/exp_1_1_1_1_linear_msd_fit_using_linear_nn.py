@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Linear MSD fit using linear NN (taxonomy 1.1.1.1)."""
 
-#%%
+# %%
 import csv
+import functools
 import os
 import sys
-from typing import Iterable, Tuple
+from typing import Callable, Iterable, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -24,25 +25,26 @@ for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
 
+from loudspeaker import LabelSpec
 from loudspeaker.data import (
     StaticTrainingStrategy,
     TrainingStrategy,
     build_msd_dataset,
     msd_dataloader,
 )
-from loudspeaker import LabelSpec
+from loudspeaker.io import save_npz_bundle
 from loudspeaker.metrics import mae, mse
 from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.neuralode import (
     LinearMSDModel,
     NeuralODE,
+    TensorBoardCallback,
     build_loss_fn,
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
     predict_neural_ode,
     train_neural_ode,
 )
-from loudspeaker.io import save_npz_bundle
 from loudspeaker.plotting import save_figure
 
 jax.config.update("jax_enable_x64", True)
@@ -79,7 +81,15 @@ def _single_batch_loader(batch: Batch) -> Iterable[Batch]:
     yield batch
 
 
-#%%
+# %%
+def _optimizer_name(factory: Callable[..., optax.GradientTransformation]) -> str:
+    if hasattr(factory, "__name__"):
+        return factory.__name__  # type: ignore[attr-defined]
+    if isinstance(factory, functools.partial):
+        return getattr(factory.func, "__name__", factory.__class__.__name__)
+    return factory.__class__.__name__
+
+
 def main(
     optimizer_factory=optax.sgd,
     loss: str = "norm_mse",
@@ -110,8 +120,14 @@ def main(
     if train_size == dataset_size:
         train_size -= 1
     test_size = dataset_size - train_size
-    train_forcing, test_forcing = forcing_values[:train_size], forcing_values[train_size:]
-    train_reference, test_reference = reference_states[:train_size], reference_states[train_size:]
+    train_forcing, test_forcing = (
+        forcing_values[:train_size],
+        forcing_values[train_size:],
+    )
+    train_reference, test_reference = (
+        reference_states[:train_size],
+        reference_states[train_size:],
+    )
 
     if strategy is None:
         strategy = StaticTrainingStrategy(steps=num_steps)
@@ -134,6 +150,16 @@ def main(
         loss_type=loss,
     )
 
+    optimizer_name = _optimizer_name(optimizer_factory)
+    run_name = f"exp3_{optimizer_name}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}"
+    tensorboard_dir = os.path.join(
+        ROOT_DIR,
+        "out",
+        "tensorboard",
+        "1_blackbox_fitting",
+        run_name,
+    )
+
     neural_ode = NeuralODE(
         model=model,
         loss_fn=loss_fn,
@@ -142,17 +168,20 @@ def main(
         initial_state=config.initial_state,
         dt=config.dt,
         num_steps=total_steps,
+        tensorboard_callback=TensorBoardCallback(tensorboard_dir),
     )
 
     trained = train_neural_ode(neural_ode, data_loader)
     plot_dir = os.path.join(
         OUT_DIR,
-        f"exp3_{optimizer_factory.__name__}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}",
+        run_name,
     )
     os.makedirs(plot_dir, exist_ok=True)
 
     eval_batch = (test_forcing[:1], test_reference[:1])
-    predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
+    predictions, targets = predict_neural_ode(
+        trained, _single_batch_loader(eval_batch), max_batches=1
+    )
     eval_prediction = predictions[0]
     eval_reference = targets[0]
     eval_forcing = eval_batch[0][0]
@@ -204,7 +233,7 @@ def main(
             writer.writerow(["test_mse", test_mse])
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Training Neural ODE with pink-noise forcing dataloader (SGD)...")
     main()

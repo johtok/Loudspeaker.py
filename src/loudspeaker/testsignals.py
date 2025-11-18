@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Self, Tuple
+from typing import Any, Iterable, Self
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 from diffrax import CubicInterpolation, backward_hermite_coefficients
-from scipy import signal
 from jax import tree_util
+from scipy import signal
 
 try:  # Lazy import to avoid hard dependency at import time.
     from colorednoise import powerlaw_psd_gaussian
@@ -26,7 +26,7 @@ class ControlSignal:
     values: jnp.ndarray
     interpolation: CubicInterpolation
 
-    def evaluate(self: Self, t: float) -> float:
+    def evaluate(self: Self, t: float | jnp.ndarray) -> jnp.ndarray:
         return self.interpolation.evaluate(t)
 
     def evaluate_batch(self: Self, ts: jnp.ndarray) -> jnp.ndarray:
@@ -42,7 +42,7 @@ class ControlSignal:
     @classmethod
     def tree_unflatten(
         cls: type[Self],
-        aux_data: Any,
+        _aux_data: Any,
         children: tuple[jnp.ndarray, jnp.ndarray, CubicInterpolation],
     ) -> Self:
         ts, values, interpolation = children
@@ -70,20 +70,22 @@ def complex_tone_control(
     freqs = jnp.atleast_1d(jnp.asarray(frequencies, dtype=jnp.float32))
 
     if amplitudes is None:
-        amplitudes = jnp.ones_like(freqs)
+        amplitudes_arr = jnp.ones_like(freqs)
     else:
-        amplitudes = jnp.asarray(amplitudes, dtype=jnp.float32)
+        amplitudes_arr = jnp.asarray(amplitudes, dtype=jnp.float32)
 
     if phases is None:
-        phases = jnp.zeros_like(freqs)
+        phases_arr = jnp.zeros_like(freqs)
     else:
-        phases = jnp.asarray(phases, dtype=jnp.float32)
+        phases_arr = jnp.asarray(phases, dtype=jnp.float32)
 
-    if amplitudes.shape != freqs.shape or phases.shape != freqs.shape:
-        raise ValueError("frequencies, amplitudes, and phases must share the same length.")
+    if amplitudes_arr.shape != freqs.shape or phases_arr.shape != freqs.shape:
+        raise ValueError(
+            "frequencies, amplitudes, and phases must share the same length."
+        )
 
-    omega_t = 2 * jnp.pi * freqs[:, None] * ts[None, :] + phases[:, None]
-    components = amplitudes[:, None] * jnp.sin(omega_t)
+    omega_t = 2 * jnp.pi * freqs[:, None] * ts[None, :] + phases_arr[:, None]
+    components = amplitudes_arr[:, None] * jnp.sin(omega_t)
     signal = jnp.sum(components, axis=0)
     return build_control_signal(ts, signal)
 
@@ -91,8 +93,8 @@ def complex_tone_control(
 def pink_noise_control(
     num_samples: int,
     dt: float,
-    key: jr.PRNGKey,
-    band: Tuple[float, float] = (1.0, 100.0),
+    key: jax.Array,
+    band: tuple[float, float] | None = (1.0, 100.0),
     exponent: float = 1.0,
     amplitude: float = 1.0,
 ) -> ControlSignal:
@@ -120,7 +122,10 @@ def pink_noise_control(
         nyquist = fs / 2.0
         if f_high >= nyquist:
             raise ValueError(f"Upper band edge {f_high} exceeds Nyquist {nyquist}.")
-        sos = signal.butter(4, [f_low, f_high], btype="bandpass", fs=fs, output="sos")
+        sos = np.asarray(
+            signal.butter(4, [f_low, f_high], btype="bandpass", fs=fs, output="sos"),
+            dtype=float,
+        )
         # Zero-phase IIR filtering before converting to JAX arrays.
         try:
             base_np = signal.sosfiltfilt(sos, base_np)

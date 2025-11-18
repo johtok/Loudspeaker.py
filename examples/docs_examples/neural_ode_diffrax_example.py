@@ -3,7 +3,7 @@
 
 # %% [markdown]
 # This example trains a [Neural ODE](https://arxiv.org/abs/1806.07366) to reproduce a toy dataset of nonlinear oscillators.
-# 
+#
 # This example is available as a Jupyter notebook [here](https://github.com/patrick-kidger/diffrax/blob/main/docs/examples/neural_ode.ipynb).
 
 # %%
@@ -23,10 +23,11 @@ import optax  # https://github.com/deepmind/optax
 
 # %% [markdown]
 # Recalling that a neural ODE is defined as
-# 
+#
 # $y(t) = y(0) + \int_0^t f_\theta(s, y(s)) ds$,
-# 
+#
 # then here we're now about to define the $f_\theta$ that appears on that right hand side.
+
 
 # %%
 class Func(eqx.Module):
@@ -51,8 +52,10 @@ class Func(eqx.Module):
         # vector field.
         return self.out_scale * self.mlp(y)
 
+
 # %% [markdown]
 # Here we wrap up the entire ODE solve into a model.
+
 
 # %%
 class NeuralODE(eqx.Module):
@@ -75,8 +78,10 @@ class NeuralODE(eqx.Module):
         )
         return solution.ys
 
+
 # %% [markdown]
 # Toy dataset of nonlinear oscillators. Sample paths look like deformed sines and cosines.
+
 
 # %%
 def _get_data(ts, *, key):
@@ -102,6 +107,7 @@ def get_data(dataset_size, *, key):
     ys = jax.vmap(lambda key: _get_data(ts, key=key))(key)
     return ts, ys
 
+
 # %%
 def dataloader(arrays, batch_size, *, key):
     dataset_size = arrays[0].shape[0]
@@ -118,8 +124,10 @@ def dataloader(arrays, batch_size, *, key):
             start = end
             end = start + batch_size
 
+
 # %% [markdown]
 # Main entry point. Try runnning `main()`.
+
 
 # %%
 def main(
@@ -187,23 +195,22 @@ def main(
 
     return ts, ys, model
 
+
 # %%
 ts, ys, model = main()
 
 # %% [markdown]
 # Some notes on speed:
 # The hyperparameters for the above example haven't really been optimised. Try experimenting with them to see how much faster you can make this example run. There's lots of things you can try tweaking:
-# 
+#
 # - The size of the neural network.
 # - The numerical solver.
 # - The step size controller, including both its step size and its tolerances.
 # - The length of the dataset. (Do you really need to use all of a time series every time?)
 # - Batch size, learning rate, choice of optimiser.
 # - ... etc.!
-# 
+#
 # Some notes on being Markov:
-# 
+#
 # - This example has assumed that the problem is Markov. Essentially, that the data `ys` is a complete observation of the system, and that we're not missing any channels. Note how the result of our model is evolving in data space. This is unlike e.g. an RNN, which has hidden state, and a linear map from hidden state to data.
 # - If we wanted we could generalise this to the non-Markov case: inside `NeuralODE`, project the initial condition into some high-dimensional latent space, do the ODE solve there, then take a linear map to get the output. See the [Latent ODE example](./latent_ode.ipynb) for an example doing this as part of a generative model; also see [Augmented Neural ODEs](https://arxiv.org/abs/1904.01681) for a short paper on it.
-
-

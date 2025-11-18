@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Nonlinear MSD sysid using ensemble NN (taxonomy 3.2.2.1)."""
 
-#%%
+# %%
+import csv
 import os
 import sys
-from typing import Iterable, Iterator, Tuple
+from typing import Iterator, Tuple
 
-import csv
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -26,14 +26,13 @@ for path in (SCRIPT_DIR, ROOT_DIR):
         sys.path.append(path)
 
 from loudspeaker import LabelSpec
-from loudspeaker.metrics import mse, nrmse
-from loudspeaker.plotting import plot_phase_fan, plot_timeseries_bundle, plot_loss, save_figure
 from loudspeaker.io import save_npz_bundle
+from loudspeaker.metrics import mse, nrmse
 from loudspeaker.nonlinear_msd import (
     NonlinearMSDConfig,
     build_nonlinear_msd_training_data,
 )
-
+from loudspeaker.plotting import plot_loss, plot_timeseries_bundle, save_figure
 
 jax.config.update("jax_enable_x64", True)
 
@@ -168,7 +167,9 @@ def main(
         batch: Batch,
     ) -> tuple[EnsembleMSD, optax.OptState, jnp.ndarray]:
         (loss_val, grads) = loss_grad(current_model, batch)
-        updates, new_state = optimizer.update(grads, current_opt_state, eqx.filter(current_model, eqx.is_array))
+        updates, new_state = optimizer.update(
+            grads, current_opt_state, eqx.filter(current_model, eqx.is_array)
+        )
         new_model = eqx.apply_updates(current_model, updates)
         return new_model, new_state, loss_val
 
@@ -199,7 +200,9 @@ def main(
         _save_fig(loss_ax, plot_dir, "training_loss.png")
 
     if test_size > 0:
-        test_state_nrmse_pct, param_mse, preds, matrices_pred, component_nrmse_pct = evaluate(model)
+        test_state_nrmse_pct, param_mse, preds, matrices_pred, component_nrmse_pct = (
+            evaluate(model)
+        )
         vel_nrmse_pct = float(component_nrmse_pct[0])
         acc_nrmse_pct = float(component_nrmse_pct[1])
         print(f"Exp6 test derivative NRMSE: {test_state_nrmse_pct:.2f}%")
@@ -239,7 +242,7 @@ def main(
     print("Exp6 training steps:", len(history))
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Training Exp6 nonlinear MSD ensemble...")
     main()

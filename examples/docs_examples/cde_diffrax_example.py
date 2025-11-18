@@ -3,25 +3,25 @@
 
 # %% [markdown]
 # This example trains a [Neural CDE](https://arxiv.org/abs/1810.01367) (a "continuous time RNN") to distinguish clockwise from counter-clockwise spirals.
-# 
+#
 # A neural CDE looks like
-# 
+#
 # $y(t) = y(0) + \int_0^t f_\theta(y(s)) \mathrm{d}x(s)$
-# 
+#
 # Where $f_\theta$ is a neural network, and $x$ is your data. The right hand side is a matrix-vector product between them. The integral is a Riemann--Stieltjes integral.
-# 
+#
 # !!! info
-# 
+#
 #     Provided the path $x$ is differentiable then the Riemann--Stieltjes integral can be converted into a normal integral:
-#     
+#
 #     $y(t) = y(0) + \int_0^t f_\theta(y(s)) \frac{\mathrm{d}x}{\mathrm{d}s}(s) \mathrm{d}s$
-#     
+#
 #     and in this case you can actually solve the CDE as an ODE. Indeed this is what we do below.
-#     
+#
 #     Typically the path $x$ is constructed as a continuous interpolation of your input data. This is an approach that often makes a lot of sense when dealing with irregular data, densely sampled data etc. (i.e. the things that an RNN or Transformer might not work so well on.)
-# 
+#
 # **Reference:**
-# 
+#
 # ```bibtex
 # @incollection{kidger2020neuralcde,
 #     title={Neural Controlled Differential Equations for Irregular Time Series},
@@ -31,7 +31,7 @@
 #     year={2020},
 # }
 # ```
-# 
+#
 # This example is available as a Jupyter notebook [here](https://github.com/patrick-kidger/diffrax/blob/main/docs/examples/neural_cde.ipynb).
 
 # %%
@@ -49,11 +49,11 @@ import matplotlib
 import matplotlib.pyplot as plt
 import optax  # https://github.com/deepmind/optax
 
-
 matplotlib.rcParams.update({"font.size": 30})
 
 # %% [markdown]
 # First let's define the vector field for the CDE.
+
 
 # %%
 class Func(eqx.Module):
@@ -81,10 +81,12 @@ class Func(eqx.Module):
     def __call__(self, t, y, args):
         return self.mlp(y).reshape(self.hidden_size, self.data_size)
 
+
 # %% [markdown]
 # Now wrap up the whole CDE solve into a model.
-# 
+#
 # In this case we cap the neural CDE with a linear layer and sigmoid, to perform binary classification.
+
 
 # %%
 class NeuralCDE(eqx.Module):
@@ -128,16 +130,18 @@ class NeuralCDE(eqx.Module):
             (prediction,) = jnn.sigmoid(self.linear(solution.ys[-1]))
         return prediction
 
+
 # %% [markdown]
 # Toy dataset of spirals.
-# 
+#
 # We interpolate the samples with Hermite cubic splines with backward differences, which were introduced in [https://arxiv.org/abs/2106.11028](https://arxiv.org/abs/2106.11028). (And produces better results than the natural cubic splines used in the original neural CDE paper.)
-# 
+#
 # !!! danger "Time is a channel"
-# 
+#
 #     Note the inclusion of time as a channel of the data! This is a subtle point that is often accidentally missed. If you include it then the model has enough information so that in theory it's actually a universal approximator. If you forget it then the model probably won't work very well...
-#     
+#
 #     If a CDE ever isn't training very well, make sure to ask yourself "did I include time as a channel?"
+
 
 # %%
 def get_data(dataset_size, add_noise, *, key):
@@ -160,6 +164,7 @@ def get_data(dataset_size, add_noise, *, key):
     _, _, data_size = ys.shape
     return ts, coeffs, labels, data_size
 
+
 # %%
 def dataloader(arrays, batch_size, *, key):
     dataset_size = arrays[0].shape[0]
@@ -176,8 +181,10 @@ def dataloader(arrays, batch_size, *, key):
             start = end
             end = start + batch_size
 
+
 # %% [markdown]
 # The main entry point. Try running `main()` to train the neural CDE.
+
 
 # %%
 def main(
@@ -266,7 +273,6 @@ def main(
     plt.savefig("neural_cde.png")
     plt.show()
 
+
 # %%
 main()
-
-

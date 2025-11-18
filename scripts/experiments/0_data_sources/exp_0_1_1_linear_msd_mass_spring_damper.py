@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Linear MSD (mass-spring-damper) data source (taxonomy 0.1.1)."""
 
-#%%
+# %%
 import os
 import sys
 
@@ -86,7 +86,7 @@ def _render_suite(name: str, result, forcing_values) -> None:
     )
 
 
-#%%
+# %%
 def main() -> None:
     config = MSDConfig()
     key = jr.PRNGKey(0)
@@ -116,7 +116,7 @@ def main() -> None:
     _render_suite("Complex Tone", complex_result, complex_control.values)
 
 
-#%%
+# %%
 if __name__ == "__main__":
     main()
 

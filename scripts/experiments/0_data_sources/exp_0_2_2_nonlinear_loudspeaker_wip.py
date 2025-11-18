@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nonlinear loudspeaker data source (taxonomy 0.2.2)."""
 
-#%%
+# %%
 import os
 import sys
 
@@ -41,7 +41,9 @@ COIL_CURRENT = LabelSpec("Coil current", "A", "i")
 COIL_FORCE = LabelSpec("Coil force", "N", "F_c")
 COIL_VOLTAGE = LabelSpec("Voice-coil voltage", "V", "V_c")
 STATE_LABELS = raw_labels(CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT)
-STATE_LABELS_NORMALIZED = normalized_labels(CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT)
+STATE_LABELS_NORMALIZED = normalized_labels(
+    CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT
+)
 FORCE_VOLTAGE_LABELS = normalized_labels(COIL_FORCE, COIL_VOLTAGE)
 
 
@@ -113,7 +115,7 @@ def _render_suite(name: str, result, forcing_values) -> None:
     )
 
 
-#%%
+# %%
 def main() -> None:
     config = NonlinearLoudspeakerConfig(
         num_samples=2048,
@@ -152,7 +154,7 @@ def main() -> None:
     _render_suite("Complex Tone", complex_result, complex_control.values)
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Generating nonlinear loudspeaker trajectories...")
     main()

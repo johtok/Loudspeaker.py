@@ -6,14 +6,14 @@ import jax.random as jr
 import pytest
 
 from loudspeaker.loudspeaker_sim import LoudspeakerConfig
-from loudspeaker.msd_sim import MSDConfig
-from loudspeaker.testsignals import build_control_signal
 from loudspeaker.models import (
     AugmentedMSDModel,
     LinearLoudspeakerModel,
     LinearMSDModel,
     LoudspeakerSimulationModel,
 )
+from loudspeaker.msd_sim import MSDConfig
+from loudspeaker.testsignals import build_control_signal
 
 
 def test_models_package_exports_linear_primitives():
@@ -49,7 +49,9 @@ def test_loudspeaker_simulation_model_wraps_simulator(monkeypatch):
         captured["capture_details"] = capture_details
         return "result"
 
-    monkeypatch.setattr("loudspeaker.models.simulation.simulate_loudspeaker_system", _fake_simulate)
+    monkeypatch.setattr(
+        "loudspeaker.models.simulation.simulate_loudspeaker_system", _fake_simulate
+    )
 
     result = sim_model.simulate(control, capture_details=True)
     assert result == "result"

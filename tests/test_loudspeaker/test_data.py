@@ -8,15 +8,15 @@ import pytest
 from loudspeaker.data import (
     MSDDataset,
     StaticTrainingStrategy,
-    build_msd_dataset,
-    build_loudspeaker_dataset,
     StrategyPhase,
     TrainingStrategy,
     _phase_length,
+    build_loudspeaker_dataset,
+    build_msd_dataset,
     msd_dataloader,
 )
-from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.loudspeaker_sim import LoudspeakerConfig
+from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.testsignals import build_control_signal
 
 
@@ -27,7 +27,9 @@ def _constant_control(num_samples: int, dt: float, key: jr.PRNGKey, band):
     return build_control_signal(ts, values)
 
 
-def _scaled_control(num_samples: int, dt: float, key: jr.PRNGKey, *, scale: float = 1.0, **_):
+def _scaled_control(
+    num_samples: int, dt: float, key: jr.PRNGKey, *, scale: float = 1.0, **_
+):
     del key  # deterministic control for testing
     ts = jnp.linspace(0.0, dt * (num_samples - 1), num_samples, dtype=jnp.float32)
     values = jnp.ones_like(ts) * jnp.float32(scale)
@@ -43,7 +45,9 @@ def test_build_msd_dataset_uses_pink_noise_control(monkeypatch):
         key=jr.PRNGKey(0),
     )
     assert isinstance(dataset, MSDDataset)
-    expected_ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    expected_ts = jnp.linspace(
+        0.0, config.duration, config.num_samples, dtype=jnp.float32
+    )
     chex.assert_trees_all_close(dataset.ts, expected_ts)
     chex.assert_shape(dataset.forcing, (4, config.num_samples))
     chex.assert_shape(dataset.reference, (4, config.num_samples, 2))
@@ -73,6 +77,18 @@ def test_build_msd_dataset_accepts_custom_forcing_fn():
     assert bool(jnp.all(dataset.forcing == 2.0))
 
 
+def test_msd_dataset_iterator_matches_attributes(monkeypatch):
+    monkeypatch.setattr("loudspeaker.data.pink_noise_control", _constant_control)
+    config = MSDConfig(num_samples=5)
+    dataset = build_msd_dataset(config, dataset_size=2, key=jr.PRNGKey(42))
+    iterator = iter(dataset)
+    chex.assert_trees_all_close(next(iterator), dataset.ts)
+    chex.assert_trees_all_close(next(iterator), dataset.forcing)
+    chex.assert_trees_all_close(next(iterator), dataset.reference)
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
 def test_build_loudspeaker_dataset_matches_config(monkeypatch):
     monkeypatch.setattr("loudspeaker.data.pink_noise_control", _constant_control)
     config = LoudspeakerConfig(num_samples=8)
@@ -81,7 +97,9 @@ def test_build_loudspeaker_dataset_matches_config(monkeypatch):
         dataset_size=3,
         key=jr.PRNGKey(0),
     )
-    expected_ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    expected_ts = jnp.linspace(
+        0.0, config.duration, config.num_samples, dtype=jnp.float32
+    )
     chex.assert_trees_all_close(ts, expected_ts)
     chex.assert_shape(forcing, (3, config.num_samples))
     chex.assert_shape(states, (3, config.num_samples, 3))
@@ -108,7 +126,9 @@ def test_build_loudspeaker_dataset_accepts_custom_forcing():
 def test_msd_dataloader_without_strategy_emits_batches():
     num_samples = 5
     dataset_size = 3
-    forcing = jnp.arange(dataset_size * num_samples, dtype=jnp.float32).reshape(dataset_size, num_samples)
+    forcing = jnp.arange(dataset_size * num_samples, dtype=jnp.float32).reshape(
+        dataset_size, num_samples
+    )
     reference = jnp.stack([jnp.column_stack([row, row]) for row in forcing])
     loader = msd_dataloader(
         forcing,
@@ -119,7 +139,9 @@ def test_msd_dataloader_without_strategy_emits_batches():
     batch_forcing, batch_reference = next(loader)
     chex.assert_shape(batch_forcing, (1, num_samples))
     chex.assert_shape(batch_reference, (1, num_samples, 2))
-    assert any(jnp.allclose(batch_forcing[0], forcing[idx]) for idx in range(dataset_size))
+    assert any(
+        jnp.allclose(batch_forcing[0], forcing[idx]) for idx in range(dataset_size)
+    )
 
 
 def test_msd_dataloader_with_strategy_truncates_sequences():
@@ -139,6 +161,34 @@ def test_msd_dataloader_with_strategy_truncates_sequences():
     batch_forcing, batch_reference = next(loader)
     chex.assert_shape(batch_forcing, (2, expected_length))
     chex.assert_shape(batch_reference, (2, expected_length, 2))
+
+
+def test_msd_dataloader_full_batch_matches_reference():
+    num_samples = 6
+    dataset_size = 3
+    forcing = jnp.arange(dataset_size * num_samples, dtype=jnp.float32).reshape(
+        dataset_size, num_samples
+    )
+    reference = jnp.stack([jnp.column_stack([row * 2.0, row * 3.0]) for row in forcing])
+    loader = msd_dataloader(
+        forcing,
+        reference,
+        batch_size=dataset_size,
+        key=jr.PRNGKey(1),
+    )
+    batch_forcing, batch_reference = next(loader)
+    chex.assert_shape(batch_forcing, forcing.shape)
+    chex.assert_shape(batch_reference, reference.shape)
+    actual_forcing = {tuple(map(float, row)) for row in jnp.asarray(batch_forcing)}
+    expected_forcing = {tuple(map(float, row)) for row in jnp.asarray(forcing)}
+    assert actual_forcing == expected_forcing
+    actual_reference = {
+        tuple(map(float, row.ravel())) for row in jnp.asarray(batch_reference)
+    }
+    expected_reference = {
+        tuple(map(float, row.ravel())) for row in jnp.asarray(reference)
+    }
+    assert actual_reference == expected_reference
 
 
 def test_msd_dataloader_validates_inputs():
@@ -171,7 +221,10 @@ def test_strategy_phase_validates_inputs():
 
 
 def test_training_strategy_iteration_and_total_steps():
-    phases = (StrategyPhase(steps=2, length_fraction=0.5), StrategyPhase(steps=1, length_fraction=1.0))
+    phases = (
+        StrategyPhase(steps=2, length_fraction=0.5),
+        StrategyPhase(steps=1, length_fraction=1.0),
+    )
     strategy = TrainingStrategy(phases)
     assert tuple(strategy) == phases
     assert strategy.total_steps == 3
@@ -185,4 +238,6 @@ def test_training_strategy_requires_phase():
 def test_static_training_strategy_uses_minimum_length():
     strategy = StaticTrainingStrategy(steps=1, length_fraction=0.01)
     # _phase_length enforces two samples minimum.
-    assert _phase_length(num_samples=10, fraction=strategy.phases[0].length_fraction) == 2
+    assert (
+        _phase_length(num_samples=10, fraction=strategy.phases[0].length_fraction) == 2
+    )

@@ -3,7 +3,8 @@ from __future__ import annotations
 import chex
 import jax.numpy as jnp
 import numpy as np
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 from loudspeaker.metrics import mae, mse, norm_mse, nrmse

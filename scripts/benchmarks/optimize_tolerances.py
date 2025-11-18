@@ -39,13 +39,17 @@ def build_environment():
         loss_config,
         dataset_size=4,
         key=jax.random.PRNGKey(1),
-        forcing_fn=lambda num_samples, dt, key, **kw: _deterministic_control(num_samples, dt),
+        forcing_fn=lambda num_samples, dt, key, **kw: _deterministic_control(
+            num_samples, dt
+        ),
     )
     model_loss = LinearMSDModel(loss_config)
     batch = (dataset.forcing[:2], dataset.reference[:2])
 
     solve_config = MSDConfig(num_samples=256, sample_rate=500.0)
-    solve_ts = jnp.linspace(0.0, solve_config.duration, solve_config.num_samples, dtype=jnp.float32)
+    solve_ts = jnp.linspace(
+        0.0, solve_config.duration, solve_config.num_samples, dtype=jnp.float32
+    )
     control = _deterministic_control(solve_config.num_samples, solve_config.dt)
     model_solve = LinearMSDModel(solve_config)
 
@@ -133,9 +137,15 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Optimize benchmark tolerances with Optuna.")
-    parser.add_argument("--trials", type=int, default=20, help="Number of Optuna trials.")
-    parser.add_argument("--repeats", type=int, default=3, help="Timing repeats per evaluation.")
+    parser = argparse.ArgumentParser(
+        description="Optimize benchmark tolerances with Optuna."
+    )
+    parser.add_argument(
+        "--trials", type=int, default=20, help="Number of Optuna trials."
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=3, help="Timing repeats per evaluation."
+    )
     parser.add_argument("--storage", type=str, default=None, help="Optuna storage URI.")
     parser.add_argument("--study-name", type=str, default="benchmark_tolerances")
     args = parser.parse_args()

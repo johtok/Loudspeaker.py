@@ -3,14 +3,14 @@
 
 # %% [markdown]
 # This example demonstrates how to incorporate an external forcing term into the solve. This is really simple: just evaluate it as part of the vector field like anything else.
-# 
+#
 # This example is available as a Jupyter notebook [here](https://github.com/patrick-kidger/diffrax/blob/main/docs/examples/forcing.ipynb).
 
 # %%
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from diffrax import diffeqsolve, ODETerm, SaveAt, Tsit5
+from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
 
 
 def force(t, args):
@@ -48,7 +48,7 @@ plt.show()
 # Now let's consider a more complicated example: the forcing term is an interpolation, and what's more we would like to differentiate with respect to the values we are interpolating.
 
 # %%
-from diffrax import backward_hermite_coefficients, CubicInterpolation
+from diffrax import CubicInterpolation, backward_hermite_coefficients
 
 
 def vector_field2(t, y, interp):
@@ -77,5 +77,3 @@ grads = solve(points)
 
 # %% [markdown]
 # In this example, we computed the interpolation in advance (not repeatedly on each step!), and then just evaluated it inside the vector field.
-
-

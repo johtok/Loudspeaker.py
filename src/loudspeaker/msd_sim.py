@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, TypeAlias, cast
 
+import jax
 import jax.numpy as jnp
-from jax import tree_util
+import numpy as np
 from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
+from jax import tree_util
 
 from .testsignals import ControlSignal
+
+
+ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
 
 
 @dataclass(frozen=True)
@@ -71,15 +76,19 @@ class SimulationResult:
 
     def tree_flatten(
         self: "SimulationResult",
-    ) -> tuple[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None], None]:
+    ) -> tuple[
+        tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None], None
+    ]:
         children = (self.ts, self.states, self.forces, self.acceleration)
         return children, None
 
     @classmethod
     def tree_unflatten(
         cls: type["SimulationResult"],
-        aux_data: Any,
-        children: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None],
+        _aux_data: Any,
+        children: tuple[
+            jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray | None
+        ],
     ) -> "SimulationResult":
         ts, states, forces, acceleration = children
         return cls(ts=ts, states=states, forces=forces, acceleration=acceleration)
@@ -87,10 +96,11 @@ class SimulationResult:
 
 def _build_vector_field(
     config: MSDConfig, forcing: ControlSignal
-) -> Callable[[float, jnp.ndarray, Any], jnp.ndarray]:
-    def vf(t: float, state: jnp.ndarray, args: Any) -> jnp.ndarray:
+) -> Callable[[ScalarLike, jnp.ndarray, Any], jnp.ndarray]:
+    def vf(t: ScalarLike, state: jnp.ndarray, _args: Any) -> jnp.ndarray:
+        force_input = cast(float | jnp.ndarray, t)
         pos, vel = state
-        force = forcing.evaluate(t)
+        force = forcing.evaluate(force_input)
         acc = (force - config.damping * vel - config.stiffness * pos) / config.mass
         return jnp.array([vel, acc])
 
@@ -122,10 +132,15 @@ def simulate_msd_system(
         saveat=SaveAt(ts=ts),
     )
 
+    if sol.ts is None or sol.ys is None:
+        raise RuntimeError("Solver returned no trajectory.")
+
     forces = None
     acc = None
     if capture_details:
-        forces = forcing.evaluate_batch(ts)
-        acc = (forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]) / config.mass
+        forces = forcing.evaluate_batch(sol.ts)
+        acc = (
+            forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]
+        ) / config.mass
 
     return SimulationResult(ts=sol.ts, states=sol.ys, forces=forces, acceleration=acc)

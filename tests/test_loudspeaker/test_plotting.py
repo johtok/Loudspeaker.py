@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
-
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import pytest
 
 from loudspeaker import plotting
@@ -69,7 +67,9 @@ def test_plot_phase_fan_supports_multiple_states():
 
 def test_plot_timeseries_bundle_can_normalize():
     ts, states = _sample_states()
-    ax = plotting.plot_timeseries_bundle(ts, states, normalized=True, styles=("--", "-."))
+    ax = plotting.plot_timeseries_bundle(
+        ts, states, normalized=True, styles=("--", "-.")
+    )
     assert ax is not None
 
 

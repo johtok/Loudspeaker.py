@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dataset export for linear loudspeaker blackbox fitting (taxonomy 0.3.1)."""
 
-#%%
+# %%
 import csv
 import os
 import sys
@@ -21,7 +21,13 @@ for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
 
-from loudspeaker import LabelSpec, normalized_labels, plot_timeseries_bundle, save_figure, save_npz_bundle
+from loudspeaker import (
+    LabelSpec,
+    normalized_labels,
+    plot_timeseries_bundle,
+    save_figure,
+    save_npz_bundle,
+)
 from loudspeaker.data import build_loudspeaker_dataset
 from loudspeaker.loudspeaker_sim import LoudspeakerConfig
 
@@ -47,7 +53,7 @@ def _write_summary(forcing: np.ndarray, states: np.ndarray, filename: str) -> No
             writer.writerow([key, value])
 
 
-#%%
+# %%
 def main(dataset_size: int = 128) -> None:
     config = LoudspeakerConfig(num_samples=512, sample_rate=48000.0)
     key = jr.PRNGKey(202)
@@ -81,7 +87,7 @@ def main(dataset_size: int = 128) -> None:
     print(f"Summary written to {summary_path}")
 
 
-#%%
+# %%
 if __name__ == "__main__":
     print("Exporting loudspeaker dataset for downstream blackbox fitting...")
     main()
@@ -90,4 +96,6 @@ if __name__ == "__main__":
 CONE_DISPLACEMENT = LabelSpec("Cone displacement", "m", "x")
 CONE_VELOCITY = LabelSpec("Cone velocity", "m/s", "v")
 COIL_CURRENT = LabelSpec("Coil current", "A", "i")
-STATE_LABELS_NORMALIZED = normalized_labels(CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT)
+STATE_LABELS_NORMALIZED = normalized_labels(
+    CONE_DISPLACEMENT, CONE_VELOCITY, COIL_CURRENT
+)

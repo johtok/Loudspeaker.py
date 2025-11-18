@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, TypeAlias, cast
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
 
 from .testsignals import ControlSignal
+
+ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
 
 
 @dataclass(frozen=True)
@@ -72,10 +76,14 @@ class NonlinearLoudspeakerConfig(LoudspeakerConfig):
         if self.force_factor_sag < 0.0:
             raise ValueError("force_factor_sag cannot be negative.")
 
-    def suspension_gain(self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray) -> jnp.ndarray:
+    def suspension_gain(
+        self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray
+    ) -> jnp.ndarray:
         return 1.0 + self.suspension_cubic * (displacement**2)
 
-    def bl_factor(self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray) -> jnp.ndarray:
+    def bl_factor(
+        self: "NonlinearLoudspeakerConfig", displacement: jnp.ndarray
+    ) -> jnp.ndarray:
         base = 1.0 - self.force_factor_sag * (displacement**2)
         return self.motor_force * jnp.clip(base, min=0.0)
 
@@ -99,20 +107,19 @@ class LoudspeakerSimulationResult:
 
 def _build_vector_field(
     config: LoudspeakerConfig, forcing: ControlSignal
-) -> callable:
+) -> Callable[[ScalarLike, jnp.ndarray, Any], jnp.ndarray]:
     inv_mass = 1.0 / config.moving_mass
     inv_inductance = 1.0 / config.voice_coil_inductance
 
-    def vf(t: float, state: jnp.ndarray, args: Any) -> jnp.ndarray:
+    def vf(t: ScalarLike, state: jnp.ndarray, _args: Any) -> jnp.ndarray:
+        force_input = cast(float | jnp.ndarray, t)
         pos, vel, current = state
-        voltage = forcing.evaluate(t)
+        voltage = forcing.evaluate(force_input)
         acceleration = (
             config.motor_force * current - config.damping * vel - config.stiffness * pos
         ) * inv_mass
         current_rate = (
-            voltage
-            - config.voice_coil_resistance * current
-            - config.motor_force * vel
+            voltage - config.voice_coil_resistance * current - config.motor_force * vel
         ) * inv_inductance
         return jnp.array([vel, acceleration, current_rate], dtype=jnp.float32)
 
@@ -122,21 +129,20 @@ def _build_vector_field(
 def _build_nonlinear_vector_field(
     config: NonlinearLoudspeakerConfig,
     forcing: ControlSignal,
-):
+) -> Callable[[ScalarLike, jnp.ndarray, Any], jnp.ndarray]:
     inv_mass = 1.0 / config.moving_mass
     inv_inductance = 1.0 / config.voice_coil_inductance
 
-    def vf(t: float, state: jnp.ndarray, args: Any) -> jnp.ndarray:
+    def vf(t: ScalarLike, state: jnp.ndarray, _args: Any) -> jnp.ndarray:
+        force_input = cast(float | jnp.ndarray, t)
         pos, vel, current = state
-        voltage = forcing.evaluate(t)
+        voltage = forcing.evaluate(force_input)
         stiffness_term = config.stiffness * config.suspension_gain(pos) * pos
         bl = config.bl_factor(pos)
         coil_force = bl * current
         acceleration = (coil_force - config.damping * vel - stiffness_term) * inv_mass
         current_rate = (
-            voltage
-            - config.voice_coil_resistance * current
-            - bl * vel
+            voltage - config.voice_coil_resistance * current - bl * vel
         ) * inv_inductance
         return jnp.array([vel, acceleration, current_rate], dtype=jnp.float32)
 
@@ -158,7 +164,7 @@ def simulate_loudspeaker_system(
     else:
         ts = jnp.asarray(ts, dtype=jnp.float32)
 
-    term = ODETerm(_build_vector_field(config, forcing))
+    term: ODETerm = ODETerm(_build_vector_field(config, forcing))
     sol = diffeqsolve(
         term,
         solver,
@@ -168,6 +174,9 @@ def simulate_loudspeaker_system(
         y0=config.initial_state,
         saveat=SaveAt(ts=ts),
     )
+
+    if sol.ts is None or sol.ys is None:
+        raise RuntimeError("Solver returned no trajectory.")
 
     voltages = None
     coil_force = None
@@ -198,7 +207,7 @@ def simulate_nonlinear_loudspeaker_system(
     else:
         ts = jnp.asarray(ts, dtype=jnp.float32)
 
-    term = ODETerm(_build_nonlinear_vector_field(config, forcing))
+    term: ODETerm = ODETerm(_build_nonlinear_vector_field(config, forcing))
     sol = diffeqsolve(
         term,
         solver,
@@ -208,6 +217,9 @@ def simulate_nonlinear_loudspeaker_system(
         y0=config.initial_state,
         saveat=SaveAt(ts=ts),
     )
+
+    if sol.ts is None or sol.ys is None:
+        raise RuntimeError("Solver returned no trajectory.")
 
     voltages = None
     coil_force = None

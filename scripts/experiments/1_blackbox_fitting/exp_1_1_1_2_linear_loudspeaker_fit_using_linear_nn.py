@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Linear loudspeaker fit using linear NN (taxonomy 1.1.1.2)."""
 
-#%%
+# %%
 import csv
 import os
 import sys
@@ -24,27 +24,26 @@ for path in (SCRIPT_DIR, ROOT_DIR):
     if path not in sys.path:
         sys.path.append(path)
 
+from loudspeaker import LabelSpec
 from loudspeaker.data import (
     StaticTrainingStrategy,
     TrainingStrategy,
     build_loudspeaker_dataset,
 )
+from loudspeaker.io import save_npz_bundle
 from loudspeaker.loudspeaker_sim import LoudspeakerConfig
-from loudspeaker import LabelSpec
 from loudspeaker.metrics import mae, mse
 from loudspeaker.models import LinearLoudspeakerModel
 from loudspeaker.neuralode import (
     NeuralODE,
+    TensorBoardCallback,
     build_loss_fn,
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
     predict_neural_ode,
-    solve_with_model,
     train_neural_ode,
 )
 from loudspeaker.plotting import save_figure
-from loudspeaker.io import save_npz_bundle
-
 
 jax.config.update("jax_enable_x64", True)
 
@@ -76,7 +75,7 @@ def _single_batch_loader(batch: Batch) -> Iterable[Batch]:
     yield batch
 
 
-#%%
+# %%
 def main(
     optimizer_factory=optax.sgd,
     loss: str = "norm_mse",
@@ -103,8 +102,14 @@ def main(
     if train_size == dataset_size:
         train_size -= 1
     test_size = dataset_size - train_size
-    train_forcing, test_forcing = forcing_values[:train_size], forcing_values[train_size:]
-    train_reference, test_reference = reference_states[:train_size], reference_states[train_size:]
+    train_forcing, test_forcing = (
+        forcing_values[:train_size],
+        forcing_values[train_size:],
+    )
+    train_reference, test_reference = (
+        reference_states[:train_size],
+        reference_states[train_size:],
+    )
 
     if strategy is None:
         strategy = StaticTrainingStrategy(steps=num_steps)
@@ -132,6 +137,15 @@ def main(
         loss_type=loss,
     )
 
+    run_name = f"exp4_{optimizer_factory.__name__}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}"
+    tensorboard_dir = os.path.join(
+        ROOT_DIR,
+        "out",
+        "tensorboard",
+        "1_blackbox_fitting",
+        run_name,
+    )
+
     neural_ode = NeuralODE(
         model=model,
         loss_fn=loss_fn,
@@ -140,17 +154,20 @@ def main(
         initial_state=config.initial_state,
         dt=config.dt,
         num_steps=total_steps,
+        tensorboard_callback=TensorBoardCallback(tensorboard_dir),
     )
 
     trained = train_neural_ode(neural_ode, dataloader())
     plot_dir = os.path.join(
         OUT_DIR,
-        f"exp4_{optimizer_factory.__name__}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}",
+        run_name,
     )
     os.makedirs(plot_dir, exist_ok=True)
 
     eval_batch = (test_forcing[:1], test_reference[:1])
-    predictions, targets = predict_neural_ode(trained, _single_batch_loader(eval_batch), max_batches=1)
+    predictions, targets = predict_neural_ode(
+        trained, _single_batch_loader(eval_batch), max_batches=1
+    )
     eval_prediction = predictions[0]
     eval_reference = targets[0]
     eval_forcing = eval_batch[0][0]
@@ -200,6 +217,7 @@ def main(
         writer.writerow(["final_mse", final_mse])
         if test_mse is not None:
             writer.writerow(["test_mse", test_mse])
+
 
 # %%
 
