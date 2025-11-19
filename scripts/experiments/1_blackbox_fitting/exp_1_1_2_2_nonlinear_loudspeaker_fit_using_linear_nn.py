@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Nonlinear loudspeaker fit using linear NN (taxonomy 1.1.2.2)."""
+
+# %%
+import csv
+import sys
+from pathlib import Path
+from typing import Tuple
+
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import optax
+
+_EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
+if str(_EXPERIMENTS_ROOT) not in sys.path:
+    sys.path.append(str(_EXPERIMENTS_ROOT))
+
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = (
+    REPO_ROOT
+    / "out"
+    / "1_blackbox_fitting"
+    / "exp_1_1_2_2_nonlinear_loudspeaker_fit_using_linear_nn"
+)
+
+from loudspeaker import LabelSpec
+from loudspeaker.data import (
+    StaticTrainingStrategy,
+    TrainingStrategy,
+    build_loudspeaker_dataset,
+)
+from loudspeaker.io import save_npz_bundle
+from loudspeaker.loudspeaker_sim import NonlinearLoudspeakerConfig
+from loudspeaker.metrics import mae, mse
+from loudspeaker.models import LinearLoudspeakerModel
+from loudspeaker.neuralode import (
+    NeuralODE,
+    TensorBoardCallback,
+    build_loss_fn,
+    plot_neural_ode_predictions,
+    predict_neural_ode,
+    train_neural_ode,
+)
+from loudspeaker.plotting import save_figure
+
+jax.config.update("jax_enable_x64", True)
+
+
+Batch = Tuple[jnp.ndarray, jnp.ndarray]
+
+CONE_DISPLACEMENT = LabelSpec("Cone displacement", "m", "x")
+CONE_VELOCITY = LabelSpec("Cone velocity", "m/s", "v")
+COIL_CURRENT = LabelSpec("Coil current", "A", "i")
+STATE_LABELS = (
+    CONE_DISPLACEMENT.raw(),
+    CONE_VELOCITY.raw(),
+    COIL_CURRENT.raw(),
+)
+TARGET_LABELS = tuple(f"Reference {label}" for label in STATE_LABELS)
+PREDICTION_LABELS = tuple(f"Predicted {label}" for label in STATE_LABELS)
+RESIDUAL_LABELS = tuple(f"{label} residual" for label in STATE_LABELS)
+
+
+# %%
+def main(
+    optimizer_factory=optax.sgd,
+    loss: str = "norm_mse",
+    num_samples: int = 512,
+    dataset_size: int = 64,
+    batch_size: int = 4,
+    num_steps: int = 200,
+    strategy: TrainingStrategy | None = None,
+    train_fraction: float = 0.8,
+):
+    config = NonlinearLoudspeakerConfig(
+        num_samples=num_samples,
+        sample_rate=48000.0,
+        use_full_model=True,
+    )
+    if dataset_size < 2:
+        raise ValueError("dataset_size must be at least 2 to support train/test split.")
+    key = jr.PRNGKey(8)
+    data_key, model_key, loader_key = jr.split(key, 3)
+
+    ts, forcing_values, reference_states = build_loudspeaker_dataset(
+        config=config,
+        dataset_size=dataset_size,
+        key=data_key,
+    )
+
+    train_size = max(1, int(train_fraction * dataset_size))
+    if train_size == dataset_size:
+        train_size -= 1
+    test_size = dataset_size - train_size
+    train_forcing, test_forcing = (
+        forcing_values[:train_size],
+        forcing_values[train_size:],
+    )
+    train_reference, test_reference = (
+        reference_states[:train_size],
+        reference_states[train_size:],
+    )
+
+    if strategy is None:
+        strategy = StaticTrainingStrategy(steps=num_steps)
+
+    def dataloader():
+        dataset_len = train_forcing.shape[0]
+        perm = jnp.arange(dataset_len)
+        rng = loader_key
+        while True:
+            rng, perm_key = jr.split(rng)
+            perm = jr.permutation(perm_key, perm)
+            for start in range(0, dataset_len, batch_size):
+                end = start + batch_size
+                if end <= dataset_len:
+                    idx = perm[start:end]
+                    yield train_forcing[idx], train_reference[idx]
+
+    model = LinearLoudspeakerModel(config=config, key=model_key)
+    optimizer = optimizer_factory(learning_rate=1e-3)
+    loss_fn = build_loss_fn(
+        ts=ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        loss_type=loss,
+    )
+
+    run_name = f"exp4_{optimizer_factory.__name__}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}_nonlinear"
+    tensorboard_dir = (
+        REPO_ROOT / "out" / "tensorboard" / "1_blackbox_fitting" / run_name
+    )
+
+    neural_ode = NeuralODE(
+        model=model,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        ts=ts,
+        initial_state=config.initial_state,
+        dt=config.dt,
+        num_steps=strategy.total_steps,
+        tensorboard_callback=TensorBoardCallback(str(tensorboard_dir)),
+    )
+
+    trained = train_neural_ode(neural_ode, dataloader())
+    plot_dir = OUT_DIR / run_name
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    eval_batch = (test_forcing[:1], test_reference[:1])
+    predictions, targets = predict_neural_ode(trained, [eval_batch], max_batches=1)
+    eval_prediction = predictions[0]
+    eval_reference = targets[0]
+    eval_forcing = eval_batch[0][0]
+
+    final_mae = float(mae(eval_prediction, eval_reference))
+    final_mse = float(mse(eval_prediction, eval_reference))
+    print("Final MAE:", final_mae)
+    print("Final MSE:", final_mse)
+
+    test_mse = None
+    if test_size > 0:
+        test_batches = [
+            (test_forcing[i : i + 1], test_reference[i : i + 1])
+            for i in range(test_forcing.shape[0])
+        ]
+        test_predictions, test_targets = predict_neural_ode(trained, test_batches)
+        test_mse = float(mse(test_predictions, test_targets))
+        print("Test set MSE:", test_mse)
+
+    base_model = LinearLoudspeakerModel(config=config)
+    param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
+    print("State matrix parameter MSE:", param_mse)
+
+    traj_ax, resid_ax = plot_neural_ode_predictions(
+        trained,
+        [eval_batch],
+        max_batches=1,
+        title="Nonlinear Loudspeaker Reference vs Predicted",
+        target_labels=TARGET_LABELS,
+        prediction_labels=PREDICTION_LABELS,
+        residual_labels=RESIDUAL_LABELS,
+    )
+    save_figure(traj_ax, plot_dir / "training_predictions.png")
+    save_figure(resid_ax, plot_dir / "training_residuals.png")
+
+    csv_path = plot_dir / "metrics.csv"
+    with csv_path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["metric", "value"])
+        writer.writerow(["final_mae", final_mae])
+        writer.writerow(["final_mse", final_mse])
+        if test_mse is not None:
+            writer.writerow(["test_mse", test_mse])
+        writer.writerow(["parameter_mse", param_mse])
+
+    save_npz_bundle(
+        plot_dir / "training_summary.npz",
+        ts=ts,
+        forcing=train_forcing,
+        states=train_reference,
+        prediction=eval_prediction,
+        forcing_sample=eval_forcing,
+    )
+
+    print("Training loop finished.")
+
+
+# %%
+if __name__ == "__main__":
+    print("Training Exp6 linear NN on nonlinear loudspeaker data...")
+    main()
