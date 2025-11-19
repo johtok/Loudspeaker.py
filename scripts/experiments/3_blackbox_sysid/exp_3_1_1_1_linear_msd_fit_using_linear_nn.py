@@ -37,9 +37,14 @@ from loudspeaker.neuralode import (
     build_loss_fn,
     plot_neural_ode_predictions,
     predict_neural_ode,
+    tensorboard_log_time_series,
     train_neural_ode,
 )
-from loudspeaker.plotting import plot_timeseries_bundle, save_figure
+from loudspeaker.plotting import (
+    normalize_state_pair,
+    plot_timeseries_bundle,
+    save_figure,
+)
 
 jax.config.update("jax_enable_x64", True)
 
@@ -156,6 +161,9 @@ def main(
     eval_reference = eval_targets[0]
     eval_forcing = train_forcing[0]
 
+    final_mae = float(mae(eval_prediction, eval_reference))
+    final_mse = float(mse(eval_prediction, eval_reference))
+
     test_mse = None
     if test_size > 0:
         test_predictions, test_targets = predict_neural_ode(
@@ -211,6 +219,63 @@ def main(
     param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
     print("Exp5 state matrix parameter MSE:", param_mse)
     print("Exp5 training history length:", len(trained.history))
+    tensorboard_cb = trained.tensorboard_callback
+    if tensorboard_cb is not None:
+        summary_step = int(strategy.total_steps)
+        raw_residuals = eval_prediction - eval_reference
+        norm_target, norm_prediction = normalize_state_pair(
+            eval_reference, eval_prediction
+        )
+        norm_residuals = norm_prediction - norm_target
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/raw/reference",
+            eval_reference,
+            labels=TARGET_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/raw/predicted",
+            eval_prediction,
+            labels=PREDICTION_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/normalized/reference",
+            norm_target,
+            labels=TARGET_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/normalized/predicted",
+            norm_prediction,
+            labels=PREDICTION_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/residuals/raw",
+            raw_residuals,
+            labels=RESIDUAL_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/residuals/normalized",
+            norm_residuals,
+            labels=RESIDUAL_LABELS,
+            step_offset=summary_step,
+        )
+        for idx, value in enumerate(trained.history):
+            tensorboard_cb.log_scalar("training/loss/history", idx, value)
+        tensorboard_cb.log_scalar("metrics/final_mae", summary_step, final_mae)
+        tensorboard_cb.log_scalar("metrics/final_mse", summary_step, final_mse)
+        if test_mse is not None:
+            tensorboard_cb.log_scalar("metrics/test_mse", summary_step, test_mse)
+        tensorboard_cb.log_scalar("metrics/param_mse", summary_step, param_mse)
 
     csv_path = plot_dir / "metrics.csv"
     with csv_path.open("w", newline="") as f:

@@ -34,6 +34,7 @@ from .neuralode import (
     plot_neural_ode_predictions,
     predict_neural_ode,
     solve_with_model,
+    tensorboard_log_time_series,
     train_model,
     train_neural_ode,
 )
@@ -106,6 +107,7 @@ __all__ = [
     "plot_trajectory",
     "normalize_state_pair",
     "save_figure",
+    "tensorboard_log_time_series",
     "LabelSpec",
     "raw_labels",
     "normalized_labels",

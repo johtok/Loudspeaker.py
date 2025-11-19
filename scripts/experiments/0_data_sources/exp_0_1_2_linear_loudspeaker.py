@@ -50,7 +50,7 @@ def _save_fig(ax, filename: str) -> None:
 def main() -> None:
     config = LoudspeakerConfig(num_samples=1024, sample_rate=48000.0)
     key = jr.PRNGKey(84)
-    pink_key, complex_key = jr.split(key)
+    pink_key, _ = jr.split(key)
 
     pink_control = pink_noise_control(
         num_samples=config.num_samples,

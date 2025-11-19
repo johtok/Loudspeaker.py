@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import warnings
 from dataclasses import dataclass, field
-from io import BytesIO
 from pathlib import Path
 from typing import (
     Any,
@@ -25,7 +24,6 @@ import optax
 import orbax.checkpoint as ocp
 from diffrax import ODETerm, PIDController, SaveAt, Tsit5, diffeqsolve
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 
 try:  # Prefer JAX-aware progress bars when available.
     import jax_tqdm as _jax_tqdm_module
@@ -100,33 +98,10 @@ class TensorBoardCallback:
         summary_value = summary.value.add()
         summary_value.tag = tag
         summary_value.simple_value = float(value)
+        _ = summary_value.simple_value
         event = cast(Any, _TBEvent())
         event.wall_time = time.time()
-        event.step = step
-        event.summary.CopyFrom(summary)
-        self._writer.add_event(event)
-        self._writer.flush()
-
-    def _write_image(
-        self,
-        tag: str,
-        step: int,
-        encoded_image: bytes,
-        height: int,
-        width: int,
-    ) -> None:
-        if self._writer is None or _TBEvent is None or _TBSummary is None:
-            return
-        summary = cast(Any, _TBSummary())
-        summary_value = summary.value.add()
-        summary_value.tag = tag
-        image_summary = summary_value.image
-        image_summary.height = height
-        image_summary.width = width
-        image_summary.colorspace = 3
-        image_summary.encoded_image_string = encoded_image
-        event = cast(Any, _TBEvent())
-        event.wall_time = time.time()
+        _ = event.wall_time
         event.step = step
         event.summary.CopyFrom(summary)
         self._writer.add_event(event)
@@ -136,17 +111,6 @@ class TensorBoardCallback:
         if self._writer is None:
             return
         self._write_scalar(tag, int(step), float(value))
-
-    def log_figure(self, tag: str, step: int | float, figure: Figure) -> None:
-        if self._writer is None:
-            return
-        figure.canvas.draw()
-        buffer = BytesIO()
-        figure.savefig(buffer, format="png", bbox_inches="tight")
-        buffer.seek(0)
-        width, height = figure.canvas.get_width_height()
-        self._write_image(tag, int(step), buffer.getvalue(), height, width)
-        buffer.close()
 
     def __call__(self, step: jnp.ndarray, loss: jnp.ndarray) -> None:
         if self._writer is None:
@@ -166,6 +130,31 @@ class TensorBoardCallback:
             loss,
             result_shape_dtypes=(),
         )
+
+
+def tensorboard_log_time_series(
+    tensorboard_cb: TensorBoardCallback,
+    prefix: str,
+    values: jnp.ndarray | np.ndarray,
+    *,
+    labels: Iterable[str] | None = None,
+    step_offset: int = 0,
+) -> None:
+    """Write each dimension of a 2D array as a separate scalar time-series entry."""
+
+    array = np.asarray(values)
+    if array.ndim != 2:
+        raise ValueError("values must be 2D for time-series logging.")
+    label_list: list[str]
+    if labels is None:
+        label_list = [f"state_{i}" for i in range(array.shape[1])]
+    else:
+        label_list = list(labels)
+    for dim in range(array.shape[1]):
+        label = label_list[dim] if dim < len(label_list) else f"state_{dim}"
+        tag = f"{prefix}/{label}"
+        for idx, entry in enumerate(array[:, dim]):
+            tensorboard_cb.log_scalar(tag, step_offset + idx, float(entry))
 
 
 class CheckpointManager:

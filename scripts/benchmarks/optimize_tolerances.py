@@ -39,7 +39,7 @@ def build_environment():
         loss_config,
         dataset_size=4,
         key=jax.random.PRNGKey(1),
-        forcing_fn=lambda num_samples, dt, key, **kw: _deterministic_control(
+        forcing_fn=lambda num_samples, dt, key, **_kw: _deterministic_control(
             num_samples, dt
         ),
     )

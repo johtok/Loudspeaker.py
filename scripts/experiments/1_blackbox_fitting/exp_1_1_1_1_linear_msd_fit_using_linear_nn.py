@@ -49,9 +49,10 @@ from loudspeaker.neuralode import (
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
     predict_neural_ode,
+    tensorboard_log_time_series,
     train_neural_ode,
 )
-from loudspeaker.plotting import save_figure
+from loudspeaker.plotting import normalize_state_pair, save_figure
 
 jax.config.update("jax_enable_x64", True)
 
@@ -224,31 +225,55 @@ def main(
     tensorboard_cb = trained.tensorboard_callback
     if tensorboard_cb is not None:
         summary_step = int(total_steps)
-        tensorboard_cb.log_figure(
-            "training/states/raw",
-            summary_step,
-            traj_ax.figure,
+        raw_residuals = eval_prediction - eval_reference
+        norm_target, norm_prediction = normalize_state_pair(
+            eval_reference, eval_prediction
         )
-        tensorboard_cb.log_figure(
+        norm_residuals = norm_prediction - norm_target
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/raw/reference",
+            eval_reference,
+            labels=TARGET_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/raw/predicted",
+            eval_prediction,
+            labels=PREDICTION_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/normalized/reference",
+            norm_target,
+            labels=TARGET_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
+            "training/states/normalized/predicted",
+            norm_prediction,
+            labels=PREDICTION_LABELS,
+            step_offset=summary_step,
+        )
+        tensorboard_log_time_series(
+            tensorboard_cb,
             "training/residuals/raw",
-            summary_step,
-            resid_ax.figure,
+            raw_residuals,
+            labels=RESIDUAL_LABELS,
+            step_offset=summary_step,
         )
-        tensorboard_cb.log_figure(
-            "training/states/normalized",
-            summary_step,
-            norm_traj_ax.figure,
-        )
-        tensorboard_cb.log_figure(
+        tensorboard_log_time_series(
+            tensorboard_cb,
             "training/residuals/normalized",
-            summary_step,
-            norm_resid_ax.figure,
+            norm_residuals,
+            labels=RESIDUAL_LABELS,
+            step_offset=summary_step,
         )
-        tensorboard_cb.log_figure(
-            "training/loss_curve",
-            summary_step,
-            loss_ax.figure,
-        )
+        for idx, value in enumerate(trained.history):
+            tensorboard_cb.log_scalar("training/loss/history", idx, value)
         tensorboard_cb.log_scalar("metrics/final_mae", summary_step, final_mae)
         tensorboard_cb.log_scalar("metrics/final_mse", summary_step, final_mse)
         if test_mse is not None:

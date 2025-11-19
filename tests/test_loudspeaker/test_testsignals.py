@@ -17,6 +17,11 @@ from loudspeaker.testsignals import (
 )
 
 
+def _flat_noise(exponent, n, random_state=None):
+    _ = random_state
+    return np.ones(n)
+
+
 def _series_strategy():
     """Generate pairs of (num_samples, value_array) for interpolation tests."""
 
@@ -149,7 +154,7 @@ def test_pink_noise_control_validates_band(monkeypatch):
     pytest.importorskip("colorednoise")
     monkeypatch.setattr(
         "loudspeaker.testsignals.powerlaw_psd_gaussian",
-        lambda exponent, n, random_state=None: np.ones(n),
+        _flat_noise,
     )
     with pytest.raises(ValueError):
         pink_noise_control(num_samples=16, dt=1e-3, key=jr.PRNGKey(0), band=(0.0, 1.0))
@@ -193,7 +198,7 @@ def test_pink_noise_control_handles_zero_padlen(monkeypatch):
     pytest.importorskip("colorednoise")
     monkeypatch.setattr(
         "loudspeaker.testsignals.powerlaw_psd_gaussian",
-        lambda exponent, n, random_state=None: np.ones(n),
+        _flat_noise,
     )
     monkeypatch.setattr(
         "loudspeaker.testsignals.signal.butter",

@@ -125,7 +125,7 @@ def main() -> None:
         force_factor_sag=0.25,
     )
     key = jr.PRNGKey(111)
-    pink_key, complex_key = jr.split(key)
+    pink_key, _ = jr.split(key)
 
     pink_control = pink_noise_control(
         num_samples=config.num_samples,
