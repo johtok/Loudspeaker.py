@@ -81,6 +81,10 @@ optimistix = ">=0.0.11,<0.0.12"
 tokei = ">=12.1.2,<13"
 
 [tool.ruff]
+line-length = 99
+indent-width = 4
+# Add the pyupgrade and isort options in addition to the defaults.
+lint.select = ["E4", "E7", "E9", "F", "I", "UP"]
 target-version = "py311"
 extend-exclude = [
     ".benchmarks",
@@ -148,7 +152,16 @@ tokei_all = "tokei src tests scripts"
 tokei_src = "tokei src"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/test_loudspeaker"]
+testpaths = ["src", "tests", "scripts"]
+norecursedirs = [".venv", "site", "htmlcov", ".pixi"]
+addopts = [
+    "--doctest-modules",
+    "--stats-rounding-precision=3",
+]
+markers = [
+    "incremental: incremental testing support",
+    "parametrize_when_used: Parametrize a test only when the argument is used.",
+]
 
 [tool.mypy]
 python_version = "3.11"

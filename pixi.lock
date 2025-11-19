@@ -3022,7 +3022,7 @@ packages:
 - pypi: ./
   name: loudspeaker
   version: 0.1.0
-  sha256: faf38a341133ff8ba10d7b4473e26512c5f4c743259e59678fbeccd8c603ab59
+  sha256: f723a6c17d0264fa091296b623dc90715193b43860b374393836cda8f1b277fc
   requires_dist:
   - colorednoise>=2.2.0,<3
   - chex

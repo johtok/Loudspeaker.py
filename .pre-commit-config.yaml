@@ -1,19 +1,40 @@
+default_language_version:
+  python: python3
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
-      - id: check-added-large-files
-      - id: check-ast
-      - id: check-json
-      - id: check-yaml
-      - id: detect-private-key
-      - id: end-of-file-fixer
       - id: trailing-whitespace
+        require_serial: true
+      - id: end-of-file-fixer
+        require_serial: true
+      - id: check-added-large-files
+        require_serial: true
+        exclude: uv.lock
+      - id: check-ast
+        require_serial: true
+      - id: check-yaml
+        require_serial: true
+        exclude: "mkdocs.yml"
+      - id: debug-statements
+        require_serial: true
+      - id: detect-private-key
+        require_serial: true
+      - id: check-executables-have-shebangs
+        require_serial: true
+      - id: check-toml
+        require_serial: true
+      - id: check-case-conflict
+        require_serial: true
+      - id: check-json
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: "v0.6.9"
     hooks:
       - id: ruff
+        args: ["--line-length", "99", "--fix"]
+        require_serial: true
       - id: ruff-format
 
   - repo: https://github.com/PyCQA/bandit
