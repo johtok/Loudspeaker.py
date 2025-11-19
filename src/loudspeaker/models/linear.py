@@ -1,23 +1,21 @@
 from __future__ import annotations
 
+import secrets
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import numpy as np
 
 from ..loudspeaker_sim import LoudspeakerConfig
 from ..msd_sim import MSDConfig
-
-_HOST_RNG = np.random.default_rng()
 
 
 def _ensure_prng_key(key: jax.Array | None) -> jax.Array:
     """Return provided key or create a new one from host randomness."""
 
     if key is None:
-        seed = int(_HOST_RNG.integers(0, np.iinfo(np.uint32).max, dtype=np.uint32))
-        key = jr.PRNGKey(seed)
+        key = jr.PRNGKey(secrets.randbits(32))
     return key
 
 

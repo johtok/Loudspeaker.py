@@ -34,6 +34,7 @@ OUT_DIR = (
 from loudspeaker import LabelSpec
 from loudspeaker.data import (
     StaticTrainingStrategy,
+    TrainTestSplit,
     TrainingStrategy,
     build_msd_dataset,
     msd_dataloader,
@@ -123,18 +124,13 @@ def main(
     forcing_values = dataset.forcing
     reference_states = dataset.reference
 
-    train_size = max(1, int(train_fraction * dataset_size))
-    if train_size == dataset_size:
-        train_size -= 1
-    test_size = dataset_size - train_size
-    train_forcing, test_forcing = (
-        forcing_values[:train_size],
-        forcing_values[train_size:],
+    split = TrainTestSplit.from_dataset(
+        forcing_values,
+        reference_states,
+        train_fraction=train_fraction,
     )
-    train_reference, test_reference = (
-        reference_states[:train_size],
-        reference_states[train_size:],
-    )
+    train_forcing = split.train_forcing
+    train_reference = split.train_reference
 
     if strategy is None:
         strategy = StaticTrainingStrategy(steps=num_steps)
@@ -178,7 +174,7 @@ def main(
     plot_dir = OUT_DIR / run_name
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    eval_batch = (test_forcing[:1], test_reference[:1])
+    eval_batch = split.evaluation_batch()
     predictions, targets = predict_neural_ode(
         trained, _single_batch_loader(eval_batch), max_batches=1
     )
@@ -191,12 +187,10 @@ def main(
     print("Final MAE:", final_mae)
     print("Final MSE:", final_mse)
 
-    test_mse = None
-    if test_size > 0:
-        test_loader = iter(_evaluation_batches(test_forcing, test_reference))
-        test_predictions, test_targets = predict_neural_ode(trained, test_loader)
-        test_mse = float(mse(test_predictions, test_targets))
-        print("Test set MSE:", test_mse)
+    test_loader = iter(split.evaluation_batches())
+    test_predictions, test_targets = predict_neural_ode(trained, test_loader)
+    test_mse = float(mse(test_predictions, test_targets))
+    print("Test set MSE:", test_mse)
 
     base_model = LinearMSDModel(config=config)
     param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
@@ -276,8 +270,7 @@ def main(
             tensorboard_cb.log_scalar("training/loss/history", idx, value)
         tensorboard_cb.log_scalar("metrics/final_mae", summary_step, final_mae)
         tensorboard_cb.log_scalar("metrics/final_mse", summary_step, final_mse)
-        if test_mse is not None:
-            tensorboard_cb.log_scalar("metrics/test_mse", summary_step, test_mse)
+        tensorboard_cb.log_scalar("metrics/test_mse", summary_step, test_mse)
         tensorboard_cb.log_scalar("metrics/param_mse", summary_step, param_mse)
     _save_fig(traj_ax, plot_dir, "training_predictions.png")
     _save_fig(resid_ax, plot_dir, "training_residuals.png")
@@ -298,8 +291,7 @@ def main(
         writer.writerow(["metric", "value"])
         writer.writerow(["final_mae", final_mae])
         writer.writerow(["final_mse", final_mse])
-        if test_mse is not None:
-            writer.writerow(["test_mse", test_mse])
+        writer.writerow(["test_mse", test_mse])
         writer.writerow(["param_mse", param_mse])
 
 

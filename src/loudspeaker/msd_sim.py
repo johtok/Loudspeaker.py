@@ -6,9 +6,10 @@ from typing import Any, Callable, TypeAlias, cast
 import jax
 import jax.numpy as jnp
 import numpy as np
-from diffrax import ODETerm, SaveAt, Tsit5, diffeqsolve
+from diffrax import Tsit5
 from jax import tree_util
 
+from ._integrator import integrate_system
 from .testsignals import ControlSignal
 
 ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
@@ -115,31 +116,22 @@ def simulate_msd_system(
 ) -> SimulationResult:
     """Simulate the MSD system with a provided forcing signal."""
 
-    solver = solver or Tsit5()
-    if ts is None:
-        ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
-    else:
-        ts = jnp.asarray(ts, dtype=jnp.float32)
-    term = ODETerm(_build_vector_field(config, forcing))
-    sol = diffeqsolve(
-        term,
-        solver,
-        t0=0.0,
-        t1=ts[-1],
-        dt0=config.dt,
-        y0=config.initial_state,
-        saveat=SaveAt(ts=ts),
+    vector_field = _build_vector_field(config, forcing)
+    ts_values, states = integrate_system(
+        config,
+        vector_field,
+        solver=solver,
+        ts=ts,
     )
-
-    if sol.ts is None or sol.ys is None:
-        raise RuntimeError("Solver returned no trajectory.")
 
     forces = None
     acc = None
     if capture_details:
-        forces = forcing.evaluate_batch(sol.ts)
+        forces = forcing.evaluate_batch(ts_values)
         acc = (
-            forces - config.damping * sol.ys[:, 1] - config.stiffness * sol.ys[:, 0]
+            forces - config.damping * states[:, 1] - config.stiffness * states[:, 0]
         ) / config.mass
 
-    return SimulationResult(ts=sol.ts, states=sol.ys, forces=forces, acceleration=acc)
+    return SimulationResult(
+        ts=ts_values, states=states, forces=forces, acceleration=acc
+    )

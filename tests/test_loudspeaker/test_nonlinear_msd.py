@@ -95,6 +95,17 @@ def test_simulate_nonlinear_msd_custom_time_grid():
     chex.assert_trees_all_close(result.ts, ts)
 
 
+def test_simulate_nonlinear_msd_capture_details_match_control():
+    config = NonlinearMSDSimConfig(num_samples=12, sample_rate=120.0)
+    ts = jnp.linspace(0.0, config.duration, config.num_samples, dtype=jnp.float32)
+    control = build_control_signal(ts, jnp.sin(2 * jnp.pi * ts * 5.0))
+    result = simulate_nonlinear_msd_system(config, control, capture_details=True)
+    assert result.forces is not None
+    assert result.acceleration is not None
+    chex.assert_trees_all_close(result.forces, control.values)
+    chex.assert_shape(result.acceleration, (config.num_samples,))
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

@@ -9,6 +9,7 @@ from loudspeaker.data import (
     MSDDataset,
     StaticTrainingStrategy,
     StrategyPhase,
+    TrainTestSplit,
     TrainingStrategy,
     _phase_length,
     build_loudspeaker_dataset,
@@ -240,4 +241,34 @@ def test_static_training_strategy_uses_minimum_length():
     # _phase_length enforces two samples minimum.
     assert (
         _phase_length(num_samples=10, fraction=strategy.phases[0].length_fraction) == 2
+    )
+
+
+def test_train_test_split_rejects_mismatched_lengths():
+    forcing = jnp.zeros((3, 4))
+    reference = jnp.zeros((2, 4, 2))
+    with pytest.raises(ValueError):
+        TrainTestSplit.from_dataset(forcing, reference, train_fraction=0.5)
+
+
+def test_train_test_split_requires_two_samples():
+    forcing = jnp.zeros((1, 5))
+    reference = jnp.zeros((1, 5, 2))
+    with pytest.raises(ValueError):
+        TrainTestSplit.from_dataset(forcing, reference, train_fraction=0.9)
+
+
+def test_train_test_split_evaluation_helpers():
+    forcing = jnp.arange(12, dtype=jnp.float32).reshape(3, 4)
+    reference = jnp.arange(24, dtype=jnp.float32).reshape(3, 4, 2)
+    split = TrainTestSplit.from_dataset(forcing, reference, train_fraction=0.66)
+    assert split.train_size == 2
+    assert split.test_size == 1
+    eval_batch = split.evaluation_batch()
+    chex.assert_shape(eval_batch[0], (1, 4))
+    chex.assert_shape(eval_batch[1], (1, 4, 2))
+    all_batches = split.evaluation_batches()
+    assert len(all_batches) == split.test_size
+    chex.assert_trees_all_close(
+        (all_batches[0][0], all_batches[0][1]), (eval_batch[0], eval_batch[1])
     )

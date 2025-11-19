@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 from diffrax import CubicInterpolation, backward_hermite_coefficients
+from jax import config as jax_config
 from jax import tree_util
 from scipy import signal
 
@@ -28,12 +29,14 @@ class ControlSignal:
     interpolation: CubicInterpolation
 
     def evaluate(self: Self, t: float | jnp.ndarray) -> jnp.ndarray:
-        return self.interpolation.evaluate(t)
+        return jnp.asarray(self.interpolation.evaluate(t), dtype=jnp.float32)
 
     def evaluate_batch(self: Self, ts: jnp.ndarray) -> jnp.ndarray:
         """Vectorized evaluation over a batch of time samples."""
+        if ts is self.ts:
+            return self.values
         batched_eval = eqx.filter_vmap(self.interpolation.evaluate)
-        return batched_eval(ts)
+        return jnp.asarray(batched_eval(ts), dtype=jnp.float32)
 
     def tree_flatten(
         self: Self,
@@ -52,11 +55,15 @@ class ControlSignal:
 
 
 def build_control_signal(ts: jnp.ndarray, values: jnp.ndarray) -> ControlSignal:
-    ts = jnp.asarray(ts, dtype=jnp.float32)
-    values = jnp.asarray(values, dtype=jnp.float32)
-    coeffs = backward_hermite_coefficients(ts, values)
-    interpolation = CubicInterpolation(ts, coeffs)
-    return ControlSignal(ts=ts, values=values, interpolation=interpolation)
+    ts32 = jnp.asarray(ts, dtype=jnp.float32)
+    values32 = jnp.asarray(values, dtype=jnp.float32)
+    interp_ts = ts32.astype(jnp.float64) if jax_config.jax_enable_x64 else ts32  # type: ignore
+    interp_values = (
+        values32.astype(jnp.float64) if jax_config.jax_enable_x64 else values32  # type: ignore
+    )
+    coeffs = backward_hermite_coefficients(interp_ts, interp_values)
+    interpolation = CubicInterpolation(interp_ts, coeffs)
+    return ControlSignal(ts=ts32, values=values32, interpolation=interpolation)
 
 
 def complex_tone_control(
@@ -90,6 +97,11 @@ def complex_tone_control(
     components = amplitudes_arr[:, None] * jnp.sin(omega_t)
     signal = jnp.sum(components, axis=0)
     return build_control_signal(ts, signal)
+
+
+def _normalize(values: jnp.ndarray, amplitude: float) -> jnp.ndarray:
+    scale = jnp.std(values) + 1e-8
+    return amplitude * values / scale
 
 
 def pink_noise_control(
@@ -128,7 +140,6 @@ def pink_noise_control(
             signal.butter(4, [f_low, f_high], btype="bandpass", fs=fs, output="sos"),
             dtype=float,
         )
-        # Zero-phase IIR filtering before converting to JAX arrays.
         try:
             base_np = signal.sosfiltfilt(sos, base_np)
         except ValueError:
@@ -145,5 +156,5 @@ def pink_noise_control(
 
     base = jnp.asarray(base_np, dtype=jnp.float32)
 
-    scaled = base / (jnp.std(base) + 1e-8) * amplitude
+    scaled = _normalize(base, amplitude)
     return build_control_signal(ts, scaled)

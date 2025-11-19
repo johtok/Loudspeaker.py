@@ -78,6 +78,7 @@ optuna = ">=4.6.0,<5"
 orbax-checkpoint = ">=0.8.0,<0.9"
 jax-tqdm = ">=0.4.0,<0.5"
 optimistix = ">=0.0.11,<0.0.12"
+tokei = ">=12.1.2,<13"
 
 [tool.ruff]
 target-version = "py311"
@@ -141,6 +142,10 @@ uninstall = "python -m pip uninstall -y loudspeaker"
 
 # TensorBoard utility
 tensorboard = "tensorboard --logdir=out/tensorboard"
+
+#lines of code loc
+tokei_all = "tokei src tests scripts"
+tokei_src = "tokei src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/test_loudspeaker"]

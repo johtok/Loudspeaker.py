@@ -329,6 +329,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/terminado-0.18.1-pyh0d859eb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tinycss2-1.4.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_ha0e22de_103.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/tokei-12.1.2-h8fae777_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tomli-2.3.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/toolz-1.1.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tornado-6.5.2-py313h07c4f96_2.conda
@@ -3021,7 +3022,7 @@ packages:
 - pypi: ./
   name: loudspeaker
   version: 0.1.0
-  sha256: af70177944d7d469a3582935687c9af21970a78f7cfdb0a3713e3844c619a016
+  sha256: faf38a341133ff8ba10d7b4473e26512c5f4c743259e59678fbeccd8c603ab59
   requires_dist:
   - colorednoise>=2.2.0,<3
   - chex
@@ -4984,6 +4985,19 @@ packages:
   purls: []
   size: 3284905
   timestamp: 1763054914403
+- conda: https://conda.anaconda.org/conda-forge/linux-64/tokei-12.1.2-h8fae777_0.conda
+  sha256: 9d02751296dea10afd9f8867cd989afe12da4ca85fc62065c8700475ffd20ca9
+  md5: 2475826b0884cd7b50e37db0b6ad01b7
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
+  constrains:
+  - __glibc >=2.17
+  license: MIT
+  license_family: MIT
+  purls: []
+  size: 1177564
+  timestamp: 1729871997332
 - conda: https://conda.anaconda.org/conda-forge/noarch/tomli-2.3.0-pyhcf101f3_0.conda
   sha256: cb77c660b646c00a48ef942a9e1721ee46e90230c7c570cdeb5a893b5cce9bff
   md5: d2732eb636c264dc9aa4cbee404b1a53
