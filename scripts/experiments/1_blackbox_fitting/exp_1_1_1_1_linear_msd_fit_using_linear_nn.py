@@ -4,8 +4,8 @@
 # %%
 import csv
 import functools
-import os
 import sys
+from pathlib import Path
 from typing import Callable, Iterable, Tuple
 
 import jax
@@ -13,17 +13,23 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-OUT_DIR = os.path.join(
-    ROOT_DIR,
-    "out",
-    "1_blackbox_fitting",
-    "exp_1_1_1_1_linear_msd_fit_using_linear_nn",
+_EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
+if str(_EXPERIMENTS_ROOT) not in sys.path:
+    sys.path.append(str(_EXPERIMENTS_ROOT))
+
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = (
+    REPO_ROOT
+    / "out"
+    / "1_blackbox_fitting"
+    / "exp_1_1_1_1_linear_msd_fit_using_linear_nn"
 )
-for path in (SCRIPT_DIR, ROOT_DIR):
-    if path not in sys.path:
-        sys.path.append(path)
 
 from loudspeaker import LabelSpec
 from loudspeaker.data import (
@@ -34,9 +40,9 @@ from loudspeaker.data import (
 )
 from loudspeaker.io import save_npz_bundle
 from loudspeaker.metrics import mae, mse
+from loudspeaker.models import LinearMSDModel
 from loudspeaker.msd_sim import MSDConfig
 from loudspeaker.neuralode import (
-    LinearMSDModel,
     NeuralODE,
     TensorBoardCallback,
     build_loss_fn,
@@ -69,8 +75,8 @@ RESIDUAL_LABELS = (
 )
 
 
-def _save_fig(ax, folder: str, filename: str) -> None:
-    save_figure(ax, os.path.join(folder, filename))
+def _save_fig(ax, folder: Path, filename: str) -> None:
+    save_figure(ax, folder / filename)
 
 
 def _evaluation_batches(forcing: jnp.ndarray, reference: jnp.ndarray) -> list[Batch]:
@@ -152,12 +158,8 @@ def main(
 
     optimizer_name = _optimizer_name(optimizer_factory)
     run_name = f"exp3_{optimizer_name}_loss_{loss}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}"
-    tensorboard_dir = os.path.join(
-        ROOT_DIR,
-        "out",
-        "tensorboard",
-        "1_blackbox_fitting",
-        run_name,
+    tensorboard_dir = (
+        REPO_ROOT / "out" / "tensorboard" / "1_blackbox_fitting" / run_name
     )
 
     neural_ode = NeuralODE(
@@ -168,15 +170,12 @@ def main(
         initial_state=config.initial_state,
         dt=config.dt,
         num_steps=total_steps,
-        tensorboard_callback=TensorBoardCallback(tensorboard_dir),
+        tensorboard_callback=TensorBoardCallback(str(tensorboard_dir)),
     )
 
     trained = train_neural_ode(neural_ode, data_loader)
-    plot_dir = os.path.join(
-        OUT_DIR,
-        run_name,
-    )
-    os.makedirs(plot_dir, exist_ok=True)
+    plot_dir = OUT_DIR / run_name
+    plot_dir.mkdir(parents=True, exist_ok=True)
 
     eval_batch = (test_forcing[:1], test_reference[:1])
     predictions, targets = predict_neural_ode(
@@ -211,26 +210,72 @@ def main(
         prediction_labels=PREDICTION_LABELS,
         residual_labels=RESIDUAL_LABELS,
     )
+    norm_traj_ax, norm_resid_ax = plot_neural_ode_predictions(
+        trained,
+        _single_batch_loader(eval_batch),
+        max_batches=1,
+        title="Normalized Reference vs Predicted Trajectory",
+        target_labels=TARGET_LABELS,
+        prediction_labels=PREDICTION_LABELS,
+        residual_labels=RESIDUAL_LABELS,
+        normalize=True,
+    )
+    loss_ax = plot_neural_ode_loss(trained)
+    tensorboard_cb = trained.tensorboard_callback
+    if tensorboard_cb is not None:
+        summary_step = int(total_steps)
+        tensorboard_cb.log_figure(
+            "training/states/raw",
+            summary_step,
+            traj_ax.figure,
+        )
+        tensorboard_cb.log_figure(
+            "training/residuals/raw",
+            summary_step,
+            resid_ax.figure,
+        )
+        tensorboard_cb.log_figure(
+            "training/states/normalized",
+            summary_step,
+            norm_traj_ax.figure,
+        )
+        tensorboard_cb.log_figure(
+            "training/residuals/normalized",
+            summary_step,
+            norm_resid_ax.figure,
+        )
+        tensorboard_cb.log_figure(
+            "training/loss_curve",
+            summary_step,
+            loss_ax.figure,
+        )
+        tensorboard_cb.log_scalar("metrics/final_mae", summary_step, final_mae)
+        tensorboard_cb.log_scalar("metrics/final_mse", summary_step, final_mse)
+        if test_mse is not None:
+            tensorboard_cb.log_scalar("metrics/test_mse", summary_step, test_mse)
+        tensorboard_cb.log_scalar("metrics/param_mse", summary_step, param_mse)
     _save_fig(traj_ax, plot_dir, "training_predictions.png")
     _save_fig(resid_ax, plot_dir, "training_residuals.png")
-    loss_ax = plot_neural_ode_loss(trained)
+    _save_fig(norm_traj_ax, plot_dir, "training_predictions_normalized.png")
+    _save_fig(norm_resid_ax, plot_dir, "training_residuals_normalized.png")
     _save_fig(loss_ax, plot_dir, "training_loss.png")
     save_npz_bundle(
-        os.path.join(plot_dir, "evaluation_results.npz"),
+        plot_dir / "evaluation_results.npz",
         ts=ts,
         forcing=eval_forcing,
         states=eval_reference,
         prediction=eval_prediction,
     )
 
-    csv_path = os.path.join(plot_dir, "metrics.csv")
-    with open(csv_path, "w", newline="") as f:
+    csv_path = plot_dir / "metrics.csv"
+    with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["metric", "value"])
         writer.writerow(["final_mae", final_mae])
         writer.writerow(["final_mse", final_mse])
         if test_mse is not None:
             writer.writerow(["test_mse", test_mse])
+        writer.writerow(["param_mse", param_mse])
 
 
 # %%

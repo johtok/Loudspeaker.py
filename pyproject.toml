@@ -140,7 +140,7 @@ install-dev = "python -m pip install -e ."
 uninstall = "python -m pip uninstall -y loudspeaker"
 
 # TensorBoard utility
-tensorboard = "python -m tensorboard.main --logdir=out/tensorboard"
+tensorboard = "tensorboard --logdir=out/tensorboard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/test_loudspeaker"]

@@ -2,23 +2,24 @@
 """Nonlinear loudspeaker data source (taxonomy 0.2.2)."""
 
 # %%
-import os
 import sys
+from pathlib import Path
 
 import jax.random as jr
 import numpy as np
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-OUT_DIR = os.path.join(
-    ROOT_DIR,
-    "out",
-    "0_data_sources",
-    "exp_0_2_2_nonlinear_loudspeaker",
-)
-for path in (SCRIPT_DIR, ROOT_DIR):
-    if path not in sys.path:
-        sys.path.append(path)
+_EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
+if str(_EXPERIMENTS_ROOT) not in sys.path:
+    sys.path.append(str(_EXPERIMENTS_ROOT))
+
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = REPO_ROOT / "out" / "0_data_sources" / "exp_0_2_2_nonlinear_loudspeaker"
 
 from loudspeaker import (
     LabelSpec,
@@ -48,7 +49,7 @@ FORCE_VOLTAGE_LABELS = normalized_labels(COIL_FORCE, COIL_VOLTAGE)
 
 
 def _save_fig(ax, filename: str) -> None:
-    save_figure(ax, os.path.join(OUT_DIR, filename))
+    save_figure(ax, OUT_DIR / filename)
 
 
 def _render_suite(name: str, result, forcing_values) -> None:
@@ -106,7 +107,7 @@ def _render_suite(name: str, result, forcing_values) -> None:
         _save_fig(mech_ax, f"{slug}_coil_force_vs_voltage.png")
 
     save_npz_bundle(
-        os.path.join(OUT_DIR, f"{slug}_trajectory.npz"),
+        OUT_DIR / f"{slug}_trajectory.npz",
         ts=result.ts,
         forcing=forcing_values,
         states=result.states,

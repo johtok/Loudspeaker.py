@@ -11,7 +11,6 @@ from jax import tree_util
 
 from .testsignals import ControlSignal
 
-
 ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
 
 

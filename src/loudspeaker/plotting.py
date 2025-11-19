@@ -16,6 +16,23 @@ def _normalize_data(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndar
     return (values - mean) / std, mean, std
 
 
+def normalize_state_pair(
+    target: npt.ArrayLike,
+    prediction: npt.ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return target and prediction states normalized with a common scale."""
+
+    target_np = np.asarray(target)
+    prediction_np = np.asarray(prediction)
+    if target_np.shape != prediction_np.shape:
+        raise ValueError("Target and prediction shapes must match for normalization.")
+
+    stacked = np.vstack([target_np, prediction_np])
+    normalized, _, _ = _normalize_data(stacked)
+    split_idx = target_np.shape[0]
+    return normalized[:split_idx], normalized[split_idx:]
+
+
 def _get_ax(ax: Axes | None = None) -> Axes:
     if ax is None:
         _, ax = plt.subplots()
@@ -29,6 +46,7 @@ def plot_trajectory(
     ax: Axes | None = None,
     title: str | None = "State Trajectories",
     styles: Iterable[str] | None = None,
+    ylabel: str | None = None,
 ) -> Axes:
     ax = _get_ax(ax)
     states_np = np.asarray(states)
@@ -39,7 +57,7 @@ def plot_trajectory(
         else:
             ax.plot(ts, states_np[:, dim], label=label)
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel("State")
+    ax.set_ylabel(ylabel if ylabel is not None else "State")
     if title:
         ax.set_title(title)
     ax.legend()
@@ -67,15 +85,21 @@ def plot_residuals(
     labels: Iterable[str] = ("position", "velocity"),
     ax: Axes | None = None,
     title: str = "Residuals",
+    ylabel: str | None = None,
 ) -> Axes:
     ax = _get_ax(ax)
     target_np = np.asarray(target)
     prediction_np = np.asarray(prediction)
     residuals = prediction_np - target_np
     for dim, label in enumerate(labels):
-        ax.plot(ts, residuals[:, dim], label=f"{label} residual")
+        label_lower = label.lower()
+        if label_lower.endswith("residual"):
+            label_text = label
+        else:
+            label_text = f"{label} residual"
+        ax.plot(ts, residuals[:, dim], label=label_text)
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel("Prediction - Target")
+    ax.set_ylabel(ylabel if ylabel is not None else "Prediction - Target")
     ax.set_title(title)
     ax.legend()
     return ax
@@ -264,6 +288,8 @@ def save_figure(
     fig = fig_like.figure if isinstance(fig_like, SubFigure) else fig_like
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
     fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches)
     if close:
         plt.close(fig)

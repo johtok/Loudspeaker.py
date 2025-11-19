@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Self
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -31,7 +32,8 @@ class ControlSignal:
 
     def evaluate_batch(self: Self, ts: jnp.ndarray) -> jnp.ndarray:
         """Vectorized evaluation over a batch of time samples."""
-        return jax.vmap(self.interpolation.evaluate)(ts)
+        batched_eval = eqx.filter_vmap(self.interpolation.evaluate)
+        return batched_eval(ts)
 
     def tree_flatten(
         self: Self,

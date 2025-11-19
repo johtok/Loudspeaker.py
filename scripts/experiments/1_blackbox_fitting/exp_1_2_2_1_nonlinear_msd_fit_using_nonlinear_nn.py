@@ -3,8 +3,8 @@
 
 # %%
 import csv
-import os
 import sys
+from pathlib import Path
 from typing import Iterator, Tuple
 
 import equinox as eqx
@@ -13,17 +13,23 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-OUT_DIR = os.path.join(
-    ROOT_DIR,
-    "out",
-    "1_blackbox_fitting",
-    "exp_1_2_2_1_nonlinear_msd_fit_using_nonlinear_nn",
+_EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
+if str(_EXPERIMENTS_ROOT) not in sys.path:
+    sys.path.append(str(_EXPERIMENTS_ROOT))
+
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = (
+    REPO_ROOT
+    / "out"
+    / "1_blackbox_fitting"
+    / "exp_1_2_2_1_nonlinear_msd_fit_using_nonlinear_nn"
 )
-for path in (SCRIPT_DIR, ROOT_DIR):
-    if path not in sys.path:
-        sys.path.append(path)
 
 from loudspeaker import LabelSpec
 from loudspeaker.io import save_npz_bundle
@@ -53,8 +59,8 @@ ACCELERATION_COMPARISON_LABELS = (
 )
 
 
-def _save_fig(ax, folder: str, filename: str) -> None:
-    save_figure(ax, os.path.join(folder, filename))
+def _save_fig(ax, folder: Path, filename: str) -> None:
+    save_figure(ax, folder / filename)
 
 
 class SingleNN(eqx.Module):
@@ -155,11 +161,10 @@ def main(
         model, opt_state, loss_value = step(model, opt_state, batch)
         history.append(float(loss_value))
 
-    plot_dir = os.path.join(
-        OUT_DIR,
-        f"exp7_{optimizer_factory.__name__}_bs_{batch_size}_steps_{num_steps}",
+    plot_dir = (
+        OUT_DIR / f"exp7_{optimizer_factory.__name__}_bs_{batch_size}_steps_{num_steps}"
     )
-    os.makedirs(plot_dir, exist_ok=True)
+    plot_dir.mkdir(parents=True, exist_ok=True)
 
     if history:
         loss_ax = plot_loss(history, title="Exp7 Training Loss")
@@ -193,15 +198,15 @@ def main(
         )
         _save_fig(acc_ax, plot_dir, "acceleration_predictions.png")
         save_npz_bundle(
-            os.path.join(plot_dir, "test_predictions.npz"),
+            plot_dir / "test_predictions.npz",
             ts=ts,
             states=test_derivs,
             forcing=test_controls,
             prediction=predictions,
         )
 
-        csv_path = os.path.join(plot_dir, "metrics.csv")
-        with open(csv_path, "w", newline="") as f:
+        csv_path = plot_dir / "metrics.csv"
+        with csv_path.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["metric", "value"])
             writer.writerow(["test_nrmse_percent", test_nrmse_pct])

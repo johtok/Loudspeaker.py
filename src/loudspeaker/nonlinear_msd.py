@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Tuple, TypeAlias, cast
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -84,14 +85,16 @@ def build_nonlinear_msd_training_data(
     rng, state_key, control_key = jr.split(key, 3)
     states = config.state_scale * jr.normal(state_key, (config.dataset_size, 2))
     controls = config.control_scale * jr.normal(control_key, (config.dataset_size, 1))
-    derivatives = jax.vmap(lambda s, u: nonlinear_msd_derivative(config, s, u))(
-        states, controls
+    batched_derivative = eqx.filter_vmap(
+        lambda s, u: nonlinear_msd_derivative(config, s, u)
     )
+    derivatives = batched_derivative(states, controls)
 
     if not include_matrices:
         return states, controls, derivatives
 
-    matrices = jax.vmap(lambda s: nonlinear_msd_matrix(config, s))(states)
+    batched_matrix = eqx.filter_vmap(lambda s: nonlinear_msd_matrix(config, s))
+    matrices = batched_matrix(states)
     return states, controls, derivatives, matrices
 
 

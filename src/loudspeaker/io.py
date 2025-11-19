@@ -30,5 +30,7 @@ def save_npz_bundle(path: str | Path, **arrays: Any) -> Path:
 
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        output.unlink()
     np.savez(output, **cast(dict[str, Any], payload))
     return output

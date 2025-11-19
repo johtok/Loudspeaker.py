@@ -3,23 +3,29 @@
 
 # %%
 import csv
-import os
 import sys
+from pathlib import Path
 
 import jax.random as jr
 import numpy as np
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-OUT_DIR = os.path.join(
-    ROOT_DIR,
-    "out",
-    "0_data_sources",
-    "exp_0_3_1_loudspeaker_data_from_linear_loudspeaker1_blackbox_fitting",
+_EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
+if str(_EXPERIMENTS_ROOT) not in sys.path:
+    sys.path.append(str(_EXPERIMENTS_ROOT))
+
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = (
+    REPO_ROOT
+    / "out"
+    / "0_data_sources"
+    / "exp_0_3_1_loudspeaker_data_from_linear_loudspeaker1_blackbox_fitting"
 )
-for path in (SCRIPT_DIR, ROOT_DIR):
-    if path not in sys.path:
-        sys.path.append(path)
 
 from loudspeaker import (
     LabelSpec,
@@ -33,12 +39,12 @@ from loudspeaker.loudspeaker_sim import LoudspeakerConfig
 
 
 def _save_fig(ax, filename: str) -> None:
-    save_figure(ax, os.path.join(OUT_DIR, filename))
+    save_figure(ax, OUT_DIR / filename)
 
 
 def _write_summary(forcing: np.ndarray, states: np.ndarray, filename: str) -> None:
-    os.makedirs(OUT_DIR, exist_ok=True)
-    path = os.path.join(OUT_DIR, filename)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / filename
     stats = {
         "forcing_mean": float(np.mean(forcing)),
         "forcing_std": float(np.std(forcing)),
@@ -46,7 +52,7 @@ def _write_summary(forcing: np.ndarray, states: np.ndarray, filename: str) -> No
         "velocity_std": float(np.std(states[..., 1])),
         "current_std": float(np.std(states[..., 2])),
     }
-    with open(path, "w", newline="") as f:
+    with path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["metric", "value"])
         for key, value in stats.items():
@@ -64,14 +70,14 @@ def main(dataset_size: int = 128) -> None:
         band=(20.0, 1500.0),
     )
     dataset_path = save_npz_bundle(
-        os.path.join(OUT_DIR, "linear_loudspeaker_dataset.npz"),
+        OUT_DIR / "linear_loudspeaker_dataset.npz",
         ts=ts,
         forcing=forcing,
         states=states,
     )
     summary_filename = "dataset_summary.csv"
     _write_summary(np.asarray(forcing), np.asarray(states), summary_filename)
-    summary_path = os.path.join(OUT_DIR, summary_filename)
+    summary_path = OUT_DIR / summary_filename
 
     preview_ax = plot_timeseries_bundle(
         ts,

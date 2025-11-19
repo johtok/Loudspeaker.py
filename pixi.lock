@@ -3021,9 +3021,9 @@ packages:
 - pypi: ./
   name: loudspeaker
   version: 0.1.0
-  sha256: 79ef6bfff2d483cf9605b4084b1de174ad431dcac4b387dcc3ecb4682c017b57
+  sha256: af70177944d7d469a3582935687c9af21970a78f7cfdb0a3713e3844c619a016
   requires_dist:
-  - colorednoise
+  - colorednoise>=2.2.0,<3
   - chex
   - hypothesis
   - pytest-benchmark

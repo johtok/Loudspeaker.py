@@ -59,7 +59,7 @@ def test_build_loss_fn_with_defaults_matches_perfect_prediction():
         forcing=control,
         reference=reference,
     )
-    model = LinearMSDModel(config=config)
+    model = LinearMSDModel(config=config, perturbation=0.0)
     chex.assert_trees_all_close(loss_fn(model, None), jnp.array(0.0))
 
 
@@ -107,14 +107,16 @@ def test_train_model_without_dataloader_records_history():
     loss_fn = _constant_zero_loss
     model = LinearMSDModel(config=config)
     optimizer = optax.sgd(learning_rate=1e-2)
+    num_steps = 3
     trained, history = train_model(
         model,
         loss_fn,
         optimizer=optimizer,
-        num_steps=3,
+        num_steps=num_steps,
         dataloader=None,
     )
-    assert len(history) == 4
+    assert len(history) == num_steps
+    assert all(value == 0.0 for value in history)
     assert history[0] == 0.0
     assert trained is not None
 
@@ -131,14 +133,15 @@ def test_train_model_with_dataloader_consumes_batches():
     loss_fn = _constant_zero_loss
     model = LinearMSDModel(config=config)
     optimizer = optax.sgd(learning_rate=1e-2)
+    num_steps = 2
     _, history = train_model(
         model,
         loss_fn,
         optimizer=optimizer,
-        num_steps=2,
+        num_steps=num_steps,
         dataloader=dataloader,
     )
-    assert len(history) == 3
+    assert len(history) == num_steps
 
 
 def test_training_reduces_loss_against_true_dynamics():
@@ -149,17 +152,18 @@ def test_training_reduces_loss_against_true_dynamics():
     baseline_loss = float(loss_fn(model, None))
 
     dataloader = itertools.repeat(None)
+    num_steps = 5
     trained, history = train_model(
         model,
         loss_fn,
         optimizer,
-        num_steps=5,
+        num_steps=num_steps,
         dataloader=dataloader,
     )
     final_loss = float(loss_fn(trained, None))
     assert final_loss <= baseline_loss
-    assert history[1] == pytest.approx(baseline_loss, rel=1e-6)
-    assert history[-1] <= history[1]
+    assert history[0] == pytest.approx(baseline_loss, rel=1e-6)
+    assert history[-1] <= history[0]
 
 
 def test_solve_with_model_runs_with_pid_controller():
@@ -222,7 +226,7 @@ def test_train_neural_ode_wrapper_records_history():
     )
     trained = train_neural_ode(neural_ode, dataloader)
     assert trained.history
-    assert len(trained.history) == 4
+    assert len(trained.history) == 3
 
 
 def test_predict_neural_ode_returns_predictions_and_targets():

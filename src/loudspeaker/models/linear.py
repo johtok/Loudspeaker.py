@@ -4,9 +4,21 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import numpy as np
 
 from ..loudspeaker_sim import LoudspeakerConfig
 from ..msd_sim import MSDConfig
+
+_HOST_RNG = np.random.default_rng()
+
+
+def _ensure_prng_key(key: jax.Array | None) -> jax.Array:
+    """Return provided key or create a new one from host randomness."""
+
+    if key is None:
+        seed = int(_HOST_RNG.integers(0, np.iinfo(np.uint32).max, dtype=np.uint32))
+        key = jr.PRNGKey(seed)
+    return key
 
 
 class _LinearModel(eqx.Module):
@@ -36,8 +48,9 @@ class LinearMSDModel(_LinearModel):
             ],
             dtype=jnp.float32,
         )
-        if key is not None:
-            base = base + perturbation * jr.normal(key, base.shape)
+        if perturbation:
+            noise_key = _ensure_prng_key(key)
+            base = base + perturbation * jr.normal(noise_key, base.shape)
         super().__init__(weight=base)
 
 
@@ -70,8 +83,9 @@ class LinearLoudspeakerModel(_LinearModel):
             ],
             dtype=jnp.float32,
         )
-        if key is not None:
-            base = base + perturbation * jr.normal(key, base.shape)
+        if perturbation:
+            noise_key = _ensure_prng_key(key)
+            base = base + perturbation * jr.normal(noise_key, base.shape)
         super().__init__(weight=base)
 
 
@@ -82,12 +96,13 @@ class AugmentedMSDModel(_LinearModel):
         self,
         state_size: int,
         *,
-        key: jax.Array,
+        key: jax.Array | None = None,
         scale: float = 0.1,
     ):
         if state_size <= 0:
             raise ValueError("state_size must be positive.")
         weight_shape = (state_size, state_size + 1)
-        self_key, _ = jr.split(key)
+        sample_key = _ensure_prng_key(key)
+        self_key, _ = jr.split(sample_key)
         base = scale * jr.normal(self_key, weight_shape, dtype=jnp.float32)
         super().__init__(weight=base)

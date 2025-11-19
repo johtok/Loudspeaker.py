@@ -24,11 +24,12 @@ from .models import (
 )
 from .msd_sim import MSDConfig, SimulationResult, simulate_msd_system
 from .neuralode import (
+    CheckpointManager,
+    LossFunction,
     NeuralODE,
+    TensorBoardCallback,
     build_loss_fn,
     norm_loss_fn,
-    CheckpointManager,
-    TensorBoardCallback,
     plot_neural_ode_loss,
     plot_neural_ode_predictions,
     predict_neural_ode,
@@ -46,6 +47,7 @@ from .nonlinear_msd import (
 )
 from .plot_labels import LabelSpec, normalized_labels, raw_labels
 from .plotting import (
+    normalize_state_pair,
     plot_loss,
     plot_normalized_phase_suite,
     plot_phase,
@@ -83,6 +85,7 @@ __all__ = [
     "LoudspeakerSimulationModel",
     "ReservoirMSDModel",
     "LoudspeakerConfig",
+    "LossFunction",
     "NeuralODE",
     "build_loss_fn",
     "norm_loss_fn",
@@ -101,6 +104,7 @@ __all__ = [
     "plot_timeseries_bundle",
     "plot_residuals",
     "plot_trajectory",
+    "normalize_state_pair",
     "save_figure",
     "LabelSpec",
     "raw_labels",

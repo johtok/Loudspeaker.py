@@ -3,8 +3,7 @@
 
 # %%
 import csv
-import os
-import sys
+from pathlib import Path
 from typing import Iterable, Tuple
 
 import jax
@@ -12,17 +11,19 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-OUT_DIR = os.path.join(
-    ROOT_DIR,
-    "out",
-    "3_blackbox_sysid",
-    "exp_3_1_1_1_linear_msd_fit_using_linear_nn",
+if __package__ in (None, ""):
+    from _paths import REPO_ROOT, ensure_sys_path, script_dir
+else:
+    from ._paths import REPO_ROOT, ensure_sys_path, script_dir
+
+SCRIPT_DIR = script_dir(__file__)
+ensure_sys_path(SCRIPT_DIR)
+OUT_DIR = (
+    REPO_ROOT
+    / "out"
+    / "3_blackbox_sysid"
+    / "exp_3_1_1_1_linear_msd_fit_using_linear_nn"
 )
-for path in (SCRIPT_DIR, ROOT_DIR):
-    if path not in sys.path:
-        sys.path.append(path)
 
 from loudspeaker import LabelSpec
 from loudspeaker.data import StaticTrainingStrategy, build_msd_dataset, msd_dataloader
@@ -63,8 +64,8 @@ RESIDUAL_LABELS = (
 )
 
 
-def _save_fig(ax, folder: str, filename: str) -> None:
-    save_figure(ax, os.path.join(folder, filename))
+def _save_fig(ax, folder: Path, filename: str) -> None:
+    save_figure(ax, folder / filename)
 
 
 def _evaluation_batches(
@@ -131,13 +132,7 @@ def main(
     )
 
     run_name = f"exp5_{optimizer_factory.__name__}_samples_{num_samples}_ds_{dataset_size}_bs_{batch_size}"
-    tensorboard_dir = os.path.join(
-        ROOT_DIR,
-        "out",
-        "tensorboard",
-        "3_blackbox_sysid",
-        run_name,
-    )
+    tensorboard_dir = REPO_ROOT / "out" / "tensorboard" / "3_blackbox_sysid" / run_name
 
     neural_ode = NeuralODE(
         model=model,
@@ -147,15 +142,12 @@ def main(
         initial_state=config.initial_state,
         dt=config.dt,
         num_steps=strategy.total_steps,
-        tensorboard_callback=TensorBoardCallback(tensorboard_dir),
+        tensorboard_callback=TensorBoardCallback(str(tensorboard_dir)),
     )
 
     trained = train_neural_ode(neural_ode, data_loader)
-    plot_dir = os.path.join(
-        OUT_DIR,
-        run_name,
-    )
-    os.makedirs(plot_dir, exist_ok=True)
+    plot_dir = OUT_DIR / run_name
+    plot_dir.mkdir(parents=True, exist_ok=True)
     eval_predictions, eval_targets = predict_neural_ode(
         trained,
         _evaluation_batches(train_forcing[:1], train_reference[:1]),
@@ -208,26 +200,27 @@ def main(
         _save_fig(traj_ax, plot_dir, "test_predictions.png")
         _save_fig(resid_ax, plot_dir, "test_residuals.png")
     save_npz_bundle(
-        os.path.join(plot_dir, "evaluation_results.npz"),
+        plot_dir / "evaluation_results.npz",
         ts=dataset.ts,
         forcing=eval_forcing,
         states=eval_reference,
         prediction=eval_prediction,
     )
 
-    csv_path = os.path.join(plot_dir, "metrics.csv")
-    with open(csv_path, "w", newline="") as f:
+    base_model = LinearMSDModel(config=config)
+    param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
+    print("Exp5 state matrix parameter MSE:", param_mse)
+    print("Exp5 training history length:", len(trained.history))
+
+    csv_path = plot_dir / "metrics.csv"
+    with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["metric", "value"])
         writer.writerow(["final_mae", float(mae(eval_prediction, eval_reference))])
         writer.writerow(["final_mse", float(mse(eval_prediction, eval_reference))])
         if test_mse is not None:
             writer.writerow(["test_mse", test_mse])
-
-    base_model = LinearMSDModel(config=config)
-    param_mse = float(jnp.mean((trained.model.weight - base_model.weight) ** 2))
-    print("Exp5 state matrix parameter MSE:", param_mse)
-    print("Exp5 training history length:", len(trained.history))
+        writer.writerow(["param_mse", param_mse])
 
 
 # %%

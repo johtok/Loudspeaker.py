@@ -1,19 +1,31 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Tuple, TypeAlias, TypeVar, cast
 import time
 import warnings
+from dataclasses import dataclass, field
+from io import BytesIO
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    Iterator,
+    Tuple,
+    TypeAlias,
+    TypeVar,
+    cast,
+)
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import optax
 import numpy as np
+import optax
 import orbax.checkpoint as ocp
 from diffrax import ODETerm, PIDController, SaveAt, Tsit5, diffeqsolve
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 try:  # Prefer JAX-aware progress bars when available.
     import jax_tqdm as _jax_tqdm_module
@@ -36,8 +48,8 @@ except ImportError:  # pragma: no cover - tensorboard optional
 
 from .metrics import mse, norm_mse
 from .models import _LinearModel
+from .plotting import normalize_state_pair, plot_residuals, plot_trajectory
 from .plotting import plot_loss as plot_loss_curve
-from .plotting import plot_residuals, plot_trajectory
 from .testsignals import ControlSignal, build_control_signal
 
 ControlBuilder = Callable[[jnp.ndarray, jnp.ndarray], ControlSignal]
@@ -46,8 +58,26 @@ ModelT = TypeVar("ModelT", bound=_LinearModel)
 ScalarLike: TypeAlias = bool | int | float | jax.Array | np.ndarray
 
 
+@dataclass(frozen=True)
+class LossFunction(Generic[ModelT]):
+    """Callable loss wrapper exposing reusable value-and-grad computations."""
+
+    fn: Callable[[ModelT, Batch | None], jnp.ndarray]
+    value_and_grad_fn: Callable[[ModelT, Batch | None], tuple[jnp.ndarray, Any]]
+
+    def __call__(
+        self, model: ModelT, batch: Batch | None
+    ) -> jnp.ndarray:  # pragma: no cover - trivial forwarding
+        return self.fn(model, batch)
+
+    def value_and_grad(
+        self, model: ModelT, batch: Batch | None
+    ) -> tuple[jnp.ndarray, Any]:
+        return self.value_and_grad_fn(model, batch)
+
+
 class TensorBoardCallback:
-    """TensorBoard scalar logger triggered from within JIT via filter_pure_callback."""
+    """TensorBoard scalar/image logger triggered from within JIT via filter_pure_callback."""
 
     def __init__(self, logdir: str | Path, tag: str = "training/loss") -> None:
         log_path = Path(logdir)
@@ -61,14 +91,14 @@ class TensorBoardCallback:
             self._writer = None
         else:
             self._writer = _TBEventWriter(str(log_path))
-        self._tag = tag
+        self._default_tag = tag
 
-    def _write_scalar(self, step: int, value: float) -> None:
+    def _write_scalar(self, tag: str, step: int, value: float) -> None:
         if self._writer is None or _TBEvent is None or _TBSummary is None:
             return
         summary = cast(Any, _TBSummary())
         summary_value = summary.value.add()
-        summary_value.tag = self._tag
+        summary_value.tag = tag
         summary_value.simple_value = float(value)
         event = cast(Any, _TBEvent())
         event.wall_time = time.time()
@@ -77,13 +107,56 @@ class TensorBoardCallback:
         self._writer.add_event(event)
         self._writer.flush()
 
+    def _write_image(
+        self,
+        tag: str,
+        step: int,
+        encoded_image: bytes,
+        height: int,
+        width: int,
+    ) -> None:
+        if self._writer is None or _TBEvent is None or _TBSummary is None:
+            return
+        summary = cast(Any, _TBSummary())
+        summary_value = summary.value.add()
+        summary_value.tag = tag
+        image_summary = summary_value.image
+        image_summary.height = height
+        image_summary.width = width
+        image_summary.colorspace = 3
+        image_summary.encoded_image_string = encoded_image
+        event = cast(Any, _TBEvent())
+        event.wall_time = time.time()
+        event.step = step
+        event.summary.CopyFrom(summary)
+        self._writer.add_event(event)
+        self._writer.flush()
+
+    def log_scalar(self, tag: str, step: int | float, value: float) -> None:
+        if self._writer is None:
+            return
+        self._write_scalar(tag, int(step), float(value))
+
+    def log_figure(self, tag: str, step: int | float, figure: Figure) -> None:
+        if self._writer is None:
+            return
+        figure.canvas.draw()
+        buffer = BytesIO()
+        figure.savefig(buffer, format="png", bbox_inches="tight")
+        buffer.seek(0)
+        width, height = figure.canvas.get_width_height()
+        self._write_image(tag, int(step), buffer.getvalue(), height, width)
+        buffer.close()
+
     def __call__(self, step: jnp.ndarray, loss: jnp.ndarray) -> None:
         if self._writer is None:
             return
 
         def _log(step_value, loss_value):
             self._write_scalar(
-                int(np.asarray(step_value)), float(np.asarray(loss_value))
+                self._default_tag,
+                int(np.asarray(step_value)),
+                float(np.asarray(loss_value)),
             )
             return ()
 
@@ -128,7 +201,9 @@ class NeuralODE:
     """Container bundling a neural ODE model, loss, and solver metadata."""
 
     model: _LinearModel
-    loss_fn: Callable[[_LinearModel, Batch | None], jnp.ndarray]
+    loss_fn: (
+        LossFunction[_LinearModel] | Callable[[_LinearModel, Batch | None], jnp.ndarray]
+    )
     optimizer: optax.GradientTransformation
     ts: jnp.ndarray
     initial_state: jnp.ndarray
@@ -154,6 +229,7 @@ class NeuralODE:
         self.initial_state = jnp.asarray(self.initial_state, dtype=jnp.float32)
 
 
+@eqx.filter_jit
 def solve_with_model(
     model: _LinearModel,
     ts: jnp.ndarray,
@@ -223,7 +299,7 @@ def build_loss_fn(
     stepsize_controller: PIDController | None = None,
     rtol: float = 1e-5,
     atol: float = 1e-5,
-) -> Callable[[_LinearModel, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray]:
+) -> LossFunction[_LinearModel]:
     if (forcing is None) ^ (reference is None):
         raise ValueError(
             "If providing a default forcing/reference pair, both must be supplied."
@@ -247,23 +323,6 @@ def build_loss_fn(
             f"Unknown loss_type '{loss_type}'. Expected 'mse' or 'norm'/'norm_mse'."
         )
 
-    def _solve(
-        model: _LinearModel,
-        time_grid: jnp.ndarray,
-        control: ControlSignal,
-    ) -> jnp.ndarray:
-        return solve_with_model(
-            model,
-            time_grid,
-            control,
-            initial_state,
-            dt,
-            solver=solver,
-            stepsize_controller=stepsize_controller,
-            rtol=rtol,
-            atol=atol,
-        )
-
     def loss_fn(
         model: _LinearModel,
         batch: Tuple[jnp.ndarray, jnp.ndarray] | None = None,
@@ -274,7 +333,17 @@ def build_loss_fn(
                     "loss_fn requires batch data when no defaults are set."
                 )
             control, target = default_data
-            prediction = _solve(model, ts, control)
+            prediction = solve_with_model(
+                model,
+                ts,
+                control,
+                initial_state,
+                dt,
+                solver=solver,
+                stepsize_controller=stepsize_controller,
+                rtol=rtol,
+                atol=atol,
+            )
             return _loss(prediction, target)
 
         batch_forcing, batch_reference = batch
@@ -282,19 +351,39 @@ def build_loss_fn(
             batch_forcing = batch_forcing[None, ...]
             batch_reference = batch_reference[None, ...]
 
-        def sample_loss(
-            forcing_values: jnp.ndarray, target_values: jnp.ndarray
-        ) -> jnp.ndarray:
+        def body(
+            running_loss: jnp.ndarray,
+            inputs: tuple[jnp.ndarray, jnp.ndarray],
+        ) -> tuple[jnp.ndarray, None]:
+            forcing_values, target_values = inputs
             length = forcing_values.shape[0]
             time_grid = ts[:length]
             control = control_builder(time_grid, forcing_values)
-            prediction = _solve(model, time_grid, control)
-            return _loss(prediction, target_values[:length])
+            prediction = solve_with_model(
+                model,
+                time_grid,
+                control,
+                initial_state,
+                dt,
+                solver=solver,
+                stepsize_controller=stepsize_controller,
+                rtol=rtol,
+                atol=atol,
+            )
+            sample_loss = _loss(prediction, target_values[:length])
+            return running_loss + sample_loss, None
 
-        losses = jax.vmap(sample_loss)(batch_forcing, batch_reference)
-        return jnp.mean(losses)
+        total_loss, _ = jax.lax.scan(
+            body,
+            jnp.array(0.0, dtype=jnp.float32),
+            (batch_forcing, batch_reference),
+        )
+        batch_size = batch_forcing.shape[0]
+        return total_loss / batch_size
 
-    return loss_fn
+    jitted_loss = eqx.filter_jit(loss_fn)
+    loss_and_grad = eqx.filter_value_and_grad(jitted_loss)
+    return LossFunction(jitted_loss, loss_and_grad)
 
 
 def _batch_iterator(
@@ -311,7 +400,8 @@ def _batch_iterator(
 
 def train_model(
     model: ModelT,
-    loss_fn: Callable[[ModelT, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray],
+    loss_fn: LossFunction[ModelT]
+    | Callable[[ModelT, Tuple[jnp.ndarray, jnp.ndarray] | None], jnp.ndarray],
     optimizer: optax.GradientTransformation,
     num_steps: int,
     dataloader: Iterable[Tuple[jnp.ndarray, jnp.ndarray]] | None = None,
@@ -320,11 +410,21 @@ def train_model(
     checkpoint_manager: CheckpointManager | None = None,
     checkpoint_every: int = 0,
 ) -> Tuple[ModelT, list[float]]:
-    history: list[float] = [0.0]
+    history: list[float] = []
 
-    @eqx.filter_value_and_grad
-    def loss_and_grad(current_model: ModelT, batch):
-        return loss_fn(current_model, batch)
+    loss_and_grad: Callable[
+        [ModelT, Tuple[jnp.ndarray, jnp.ndarray] | None], tuple[jnp.ndarray, Any]
+    ]
+    if isinstance(loss_fn, LossFunction):
+        loss_and_grad = loss_fn.value_and_grad
+    else:
+        loss_and_grad = cast(
+            Callable[
+                [ModelT, Tuple[jnp.ndarray, jnp.ndarray] | None],
+                tuple[jnp.ndarray, Any],
+            ],
+            eqx.filter_value_and_grad(loss_fn),
+        )
 
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
     batches = _batch_iterator(dataloader)
@@ -452,8 +552,9 @@ def plot_neural_ode_predictions(
     prediction_labels: Iterable[str] = ("predicted position", "predicted velocity"),
     residual_labels: Iterable[str] | None = None,
     title: str | None = "Neural ODE Prediction",
+    normalize: bool = False,
 ) -> tuple[Axes, Axes]:
-    """Plot reference vs. predicted trajectories for a sample from the dataloader."""
+    """Plot reference vs. predicted trajectories for a sample from the dataloader, optionally normalizing both series."""
 
     predictions, targets = predict_neural_ode(
         neural_ode,
@@ -467,22 +568,40 @@ def plot_neural_ode_predictions(
     target = targets[sample_index]
     ts = neural_ode.ts[: prediction.shape[0]]
 
+    plot_target = target
+    plot_prediction = prediction
+    if normalize:
+        norm_target, norm_prediction = normalize_state_pair(
+            plot_target, plot_prediction
+        )
+        plot_target = jnp.asarray(norm_target)
+        plot_prediction = jnp.asarray(norm_prediction)
+
+    trajectory_ylabel = "Normalized State" if normalize else None
     trajectory_ax = plot_trajectory(
         ts,
-        target,
+        plot_target,
         labels=target_labels,
         title=title,
+        ylabel=trajectory_ylabel,
     )
     plot_trajectory(
         ts,
-        prediction,
+        plot_prediction,
         labels=prediction_labels,
         ax=trajectory_ax,
         title=None,
         styles=tuple(["--"] * prediction.shape[1]),
     )
     labels_for_residuals = residual_labels or target_labels
-    residual_ax = plot_residuals(ts, target, prediction, labels=labels_for_residuals)
+    residual_ylabel = "Normalized Residual" if normalize else None
+    residual_ax = plot_residuals(
+        ts,
+        plot_target,
+        plot_prediction,
+        labels=labels_for_residuals,
+        ylabel=residual_ylabel,
+    )
     return trajectory_ax, residual_ax
 
 
